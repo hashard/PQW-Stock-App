@@ -1,0 +1,275 @@
+import express from 'express';
+import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// ── Data directory ────────────────────────────────────────────────────────────
+const DATA_DIR = path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const FILES = {
+  products:    path.join(DATA_DIR, 'products.json'),
+  adjustments: path.join(DATA_DIR, 'adjustments.json'),
+  settings:    path.join(DATA_DIR, 'settings.json'),
+};
+
+const DEFAULTS = {
+  products:    [],
+  adjustments: [],
+  settings: {
+    woo_url: '',
+    consumer_key: '',
+    consumer_secret: '',
+    default_threshold: 5,
+    auto_sync_interval: 0,
+  },
+};
+
+function initFile(key) {
+  if (!fs.existsSync(FILES[key])) {
+    fs.writeFileSync(FILES[key], JSON.stringify(DEFAULTS[key], null, 2));
+  }
+}
+Object.keys(FILES).forEach(initFile);
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const readData  = (key) => JSON.parse(fs.readFileSync(FILES[key], 'utf8'));
+const writeData = (key, data) => fs.writeFileSync(FILES[key], JSON.stringify(data, null, 2));
+const uid       = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+function computeProduct(p) {
+  const combined  = (p.woo_stock ?? 0) + (p.cutting_room_stock ?? 0);
+  const threshold = p.low_stock_threshold ?? 5;
+  const status    = combined === 0 ? 'out_of_stock' : combined <= threshold ? 'low_stock' : 'in_stock';
+  return { ...p, combined_stock: combined, status };
+}
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// ── Products ──────────────────────────────────────────────────────────────────
+app.get('/api/products', (_req, res) => {
+  res.json(readData('products').map(computeProduct));
+});
+
+app.put('/api/products/:id', (req, res) => {
+  const products = readData('products');
+  const idx = products.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Product not found' });
+
+  const updated = { ...products[idx], ...req.body, updated_at: new Date().toISOString() };
+  // Prevent accidentally overwriting computed fields via PUT
+  delete updated.combined_stock;
+  delete updated.status;
+  products[idx] = updated;
+  writeData('products', products);
+  res.json(computeProduct(updated));
+});
+
+// ── Adjustments ───────────────────────────────────────────────────────────────
+app.get('/api/adjustments', (_req, res) => {
+  const adj = readData('adjustments');
+  res.json(adj.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+});
+
+app.post('/api/adjustments', (req, res) => {
+  const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
+
+  if (!product_id || !adjustment_type || quantity === undefined || !reason?.trim() || !user_name?.trim()) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  const products = readData('products');
+  const idx = products.findIndex(p => p.id === product_id);
+  if (idx === -1) return res.status(404).json({ error: 'Product not found' });
+
+  const product  = products[idx];
+  const previous = product.cutting_room_stock ?? 0;
+  let newStock;
+
+  if (adjustment_type === 'add')    newStock = previous + Number(quantity);
+  else if (adjustment_type === 'remove') newStock = previous - Number(quantity);
+  else if (adjustment_type === 'set')    newStock = Number(quantity);
+  else return res.status(400).json({ error: 'Invalid adjustment_type' });
+
+  if (newStock < 0) newStock = 0;
+
+  const adjustment = {
+    id:             uid(),
+    product_id,
+    sku:            product.sku,
+    product_name:   product.name,
+    adjustment_type,
+    quantity_change: newStock - previous,
+    previous_stock:  previous,
+    new_stock:       newStock,
+    reason:          reason.trim(),
+    user_name:       user_name.trim(),
+    created_at:      new Date().toISOString(),
+  };
+
+  products[idx] = { ...product, cutting_room_stock: newStock, updated_at: new Date().toISOString() };
+  writeData('products', products);
+
+  const adjustments = readData('adjustments');
+  adjustments.push(adjustment);
+  writeData('adjustments', adjustments);
+
+  res.json({ product: computeProduct(products[idx]), adjustment });
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+app.get('/api/settings', (_req, res) => res.json(readData('settings')));
+
+app.put('/api/settings', (req, res) => {
+  const settings = { ...readData('settings'), ...req.body };
+  writeData('settings', settings);
+  res.json(settings);
+});
+
+// ── WooCommerce Sync ──────────────────────────────────────────────────────────
+async function fetchAllWooProducts(settings) {
+  const { woo_url, consumer_key, consumer_secret } = settings;
+  if (!woo_url || !consumer_key || !consumer_secret) {
+    throw new Error('WooCommerce credentials are not configured. Go to Settings first.');
+  }
+
+  const base = woo_url.replace(/\/$/, '');
+  const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+
+  let all = [];
+  let page = 1;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const url = `${base}/wp-json/wc/v3/products?per_page=100&page=${page}&status=publish`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Basic ${auth}` },
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`WooCommerce API error ${res.status}: ${body}`);
+    }
+
+    const batch = await res.json();
+    if (!batch.length) break;
+    all = all.concat(batch);
+    if (batch.length < 100) break;
+    page++;
+  }
+
+  return all;
+}
+
+app.post('/api/sync', async (_req, res) => {
+  try {
+    const settings = readData('settings');
+    const wooItems = await fetchAllWooProducts(settings);
+    const existing = readData('products');
+    const bySkuMap = new Map(existing.map(p => [p.sku, p]));
+    const syncedAt = new Date().toISOString();
+
+    for (const wp of wooItems) {
+      const sku      = (wp.sku || '').trim();
+      const category = wp.categories?.[0]?.name ?? 'Uncategorized';
+      const wooStock = wp.manage_stock
+        ? (wp.stock_quantity ?? 0)
+        : (wp.stock_status === 'instock' ? 999 : 0);
+
+      const key = sku || `__woo_${wp.id}`;
+
+      if (bySkuMap.has(key)) {
+        const prev = bySkuMap.get(key);
+        bySkuMap.set(key, {
+          ...prev,
+          woo_product_id: wp.id,
+          name:           wp.name,
+          sku:            sku || prev.sku,
+          category,
+          woo_stock:      wooStock,
+          last_synced_at: syncedAt,
+          updated_at:     syncedAt,
+          flagged:        !sku,
+        });
+      } else {
+        bySkuMap.set(key, {
+          id:                uid(),
+          woo_product_id:    wp.id,
+          name:              wp.name,
+          sku:               sku || `NO-SKU-${wp.id}`,
+          category,
+          woo_stock:         wooStock,
+          cutting_room_stock: 0,
+          low_stock_threshold: settings.default_threshold ?? 5,
+          last_synced_at:    syncedAt,
+          updated_at:        syncedAt,
+          flagged:           !sku,
+          notes:             '',
+        });
+      }
+    }
+
+    const finalProducts = Array.from(bySkuMap.values());
+    writeData('products', finalProducts);
+
+    res.json({
+      products:     finalProducts.map(computeProduct),
+      synced_count: wooItems.length,
+      synced_at:    syncedAt,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CSV Export ────────────────────────────────────────────────────────────────
+function toCSV(headers, rows) {
+  const escape = v => (typeof v === 'string' && v.includes(',') ? `"${v.replace(/"/g, '""')}"` : v);
+  return [headers, ...rows].map(r => r.map(escape).join(',')).join('\n');
+}
+
+app.get('/api/export/products', (_req, res) => {
+  const products = readData('products').map(computeProduct);
+  const csv = toCSV(
+    ['Name', 'SKU', 'Category', 'Woo Stock', 'Cutting Room', 'Combined', 'Status', 'Threshold', 'Last Synced'],
+    products.map(p => [p.name, p.sku, p.category, p.woo_stock, p.cutting_room_stock, p.combined_stock, p.status, p.low_stock_threshold, p.last_synced_at ?? '']),
+  );
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=pqw-inventory.csv');
+  res.send(csv);
+});
+
+app.get('/api/export/adjustments', (_req, res) => {
+  const adj = readData('adjustments').sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const csv = toCSV(
+    ['Product', 'SKU', 'Type', 'Change', 'Previous', 'New', 'Reason', 'User', 'Date'],
+    adj.map(a => [a.product_name, a.sku, a.adjustment_type, a.quantity_change, a.previous_stock, a.new_stock, a.reason, a.user_name, a.created_at]),
+  );
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=pqw-adjustments.csv');
+  res.send(csv);
+});
+
+// ── SPA Fallback ──────────────────────────────────────────────────────────────
+app.get('*', (_req, res) => {
+  const index = path.join(__dirname, 'dist', 'index.html');
+  if (fs.existsSync(index)) {
+    res.sendFile(index);
+  } else {
+    res.status(404).send('Run `npm run build` first, or use `npm run dev` for development.');
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`\n  PQW Stock Dashboard → http://localhost:${PORT}\n`);
+});

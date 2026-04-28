@@ -1,0 +1,13 @@
+node_modules/
+dist/
+
+# Never commit data — contains API credentials and business stock data
+data/
+
+# Environment files
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db

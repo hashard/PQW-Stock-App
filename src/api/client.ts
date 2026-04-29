@@ -61,6 +61,10 @@ export const api = {
     run: (payload: TransferPayload) =>
       req<AdjustResult>('/transfer', { method: 'POST', body: JSON.stringify(payload) }),
   },
+  wooStock: {
+    adjust: (payload: { product_id: string; adjustment_type: 'add' | 'remove' | 'set'; quantity: number; reason: string; user_name: string }) =>
+      req<AdjustResult>('/woo-stock', { method: 'POST', body: JSON.stringify(payload) }),
+  },
   export: {
     products:    () => { window.location.href = '/api/export/products'; },
     adjustments: () => { window.location.href = '/api/export/adjustments'; },

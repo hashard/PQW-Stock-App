@@ -1,5 +1,5 @@
 export type StockStatus    = 'in_stock' | 'low_stock' | 'out_of_stock';
-export type AdjustmentType = 'add' | 'remove' | 'set' | 'transfer_to_woo';
+export type AdjustmentType = 'add' | 'remove' | 'set' | 'transfer_to_woo' | 'woo_edit';
 export type SortDir        = 'asc' | 'desc';
 
 export interface Product {

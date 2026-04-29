@@ -136,6 +136,88 @@ app.put('/api/settings', (req, res) => {
   res.json(settings);
 });
 
+// ── Edit WooCommerce Stock Directly ──────────────────────────────────────────
+app.post('/api/woo-stock', async (req, res) => {
+  const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
+
+  if (!product_id || !adjustment_type || quantity === undefined || !reason?.trim() || !user_name?.trim()) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
+  const qty = Number(quantity);
+  if (isNaN(qty) || qty < 0) {
+    return res.status(400).json({ error: 'Quantity must be 0 or more.' });
+  }
+
+  const products = readData('products');
+  const idx = products.findIndex(p => p.id === product_id);
+  if (idx === -1) return res.status(404).json({ error: 'Product not found.' });
+
+  const product = products[idx];
+
+  if (!product.woo_product_id) {
+    return res.status(400).json({ error: 'This product has no WooCommerce ID — sync first.' });
+  }
+
+  const settings = readData('settings');
+  const { woo_url, consumer_key, consumer_secret } = settings;
+  if (!woo_url || !consumer_key || !consumer_secret) {
+    return res.status(400).json({ error: 'WooCommerce credentials not configured. Go to Settings first.' });
+  }
+
+  const previousWoo = product.woo_stock ?? 0;
+  let newWooStock;
+  if (adjustment_type === 'add')    newWooStock = previousWoo + qty;
+  else if (adjustment_type === 'remove') newWooStock = Math.max(0, previousWoo - qty);
+  else if (adjustment_type === 'set')    newWooStock = qty;
+  else return res.status(400).json({ error: 'Invalid adjustment_type.' });
+
+  const base = woo_url.replace(/\/$/, '');
+  const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+
+  try {
+    const wooRes = await fetch(`${base}/wp-json/wc/v3/products/${product.woo_product_id}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ stock_quantity: newWooStock, manage_stock: true }),
+    });
+
+    if (!wooRes.ok) {
+      const body = await wooRes.text();
+      throw new Error(`WooCommerce API error ${wooRes.status}: ${body}`);
+    }
+  } catch (err) {
+    return res.status(500).json({ error: `Failed to update WooCommerce: ${err.message}` });
+  }
+
+  const now = new Date().toISOString();
+  const adjustment = {
+    id:              uid(),
+    product_id,
+    sku:             product.sku,
+    product_name:    product.name,
+    adjustment_type: 'woo_edit',
+    quantity_change: newWooStock - previousWoo,
+    previous_stock:  previousWoo,
+    new_stock:       newWooStock,
+    reason:          reason.trim(),
+    user_name:       user_name.trim(),
+    created_at:      now,
+  };
+
+  products[idx] = { ...product, woo_stock: newWooStock, updated_at: now };
+  writeData('products', products);
+
+  const adjustments = readData('adjustments');
+  adjustments.push(adjustment);
+  writeData('adjustments', adjustments);
+
+  res.json({ product: computeProduct(products[idx]), adjustment });
+});
+
 // ── Transfer: Cutting Room → WooCommerce ─────────────────────────────────────
 app.post('/api/transfer', async (req, res) => {
   const { product_id, quantity, reason, user_name } = req.body;

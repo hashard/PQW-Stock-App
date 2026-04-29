@@ -12,7 +12,7 @@ function fmt(iso: string) {
 }
 
 const typeLabel: Record<string, string> = {
-  add: 'Add', remove: 'Remove', set: 'Set', transfer_to_woo: 'To Woo',
+  add: 'Add', remove: 'Remove', set: 'Set', transfer_to_woo: 'To Woo', woo_edit: 'Woo Edit',
 };
 
 function DiffChip({ diff }: { diff: number }) {
@@ -68,6 +68,7 @@ export function AdjustmentLog() {
           <option value="remove">Remove</option>
           <option value="set">Set</option>
           <option value="transfer_to_woo">Move to Woo</option>
+          <option value="woo_edit">Woo Edit</option>
         </select>
         <span className="text-xs text-slate-500">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</span>
         <Button size="sm" variant="secondary" onClick={api.export.adjustments} className="ml-auto">
@@ -102,6 +103,7 @@ export function AdjustmentLog() {
                     a.adjustment_type === 'add'             ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
                     a.adjustment_type === 'remove'          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                     a.adjustment_type === 'transfer_to_woo' ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400' :
+                    a.adjustment_type === 'woo_edit'        ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                                                               'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
                   ].join(' ')}>
                     {typeLabel[a.adjustment_type]}

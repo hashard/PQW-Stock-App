@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { Minus, Plus, Hash } from 'lucide-react';
+import { Minus, Plus, Hash, ArrowRightLeft } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { useStore } from '../../store';
 import { api } from '../../api/client';
 import type { AdjustmentType } from '../../types';
 
+type Mode = 'adjust' | 'transfer';
+
 export function AdjustModal() {
   const { adjustProductId, products, closeAdjustModal, updateProduct, addAdjustment } = useStore();
-
   const product = products.find(p => p.id === adjustProductId);
 
+  const [mode, setMode]       = useState<Mode>('adjust');
   const [type, setType]       = useState<AdjustmentType>('add');
   const [qty, setQty]         = useState('');
   const [reason, setReason]   = useState('');
@@ -19,7 +21,7 @@ export function AdjustModal() {
   const [err, setErr]         = useState('');
 
   function reset() {
-    setType('add'); setQty(''); setReason(''); setErr('');
+    setMode('adjust'); setType('add'); setQty(''); setReason(''); setErr('');
   }
 
   function handleClose() {
@@ -36,49 +38,75 @@ export function AdjustModal() {
     if (!reason.trim()) { setErr('Reason is required.'); return; }
     if (!user.trim())   { setErr('Staff name is required.'); return; }
 
+    // Transfer-specific validation
+    if (mode === 'transfer' && quantity > (product?.cutting_room_stock ?? 0)) {
+      setErr(`Not enough cutting room stock. Available: ${product?.cutting_room_stock ?? 0}`);
+      return;
+    }
+
     setLoading(true);
     try {
-      const result = await api.adjustments.create({
-        product_id:      product!.id,
-        adjustment_type: type,
-        quantity,
-        reason:          reason.trim(),
-        user_name:       user.trim(),
-      });
+      let result;
+      if (mode === 'transfer') {
+        result = await api.transfer.run({
+          product_id: product!.id,
+          quantity,
+          reason:     reason.trim(),
+          user_name:  user.trim(),
+        });
+      } else {
+        result = await api.adjustments.create({
+          product_id:      product!.id,
+          adjustment_type: type,
+          quantity,
+          reason:          reason.trim(),
+          user_name:       user.trim(),
+        });
+      }
       localStorage.setItem('pqw_last_user', user.trim());
       updateProduct(result.product);
       addAdjustment(result.adjustment);
       handleClose();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to save adjustment.');
+      setErr(e instanceof Error ? e.message : 'Failed to save.');
     } finally {
       setLoading(false);
     }
   }
 
-  const typeOptions: { value: AdjustmentType; label: string; icon: React.ReactNode; color: string }[] = [
+  const adjustTypes: { value: AdjustmentType; label: string; icon: React.ReactNode; color: string }[] = [
     { value: 'add',    label: 'Add',    icon: <Plus  className="h-4 w-4" />, color: 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
     { value: 'remove', label: 'Remove', icon: <Minus className="h-4 w-4" />, color: 'border-red-500 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
     { value: 'set',    label: 'Set to', icon: <Hash  className="h-4 w-4" />, color: 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
   ];
 
+  // Preview calculation
   const preview = () => {
     if (!product) return null;
-    const q = Number(qty) || 0;
+    const q    = Number(qty) || 0;
     const prev = product.cutting_room_stock;
+
+    if (mode === 'transfer') {
+      return {
+        cutting: { prev, next: prev - q },
+        woo:     { prev: product.woo_stock, next: product.woo_stock + q },
+        isTransfer: true,
+      };
+    }
+
     let next: number;
     if (type === 'add')    next = prev + q;
     else if (type === 'remove') next = Math.max(0, prev - q);
     else next = Math.max(0, q);
-    const diff = next - prev;
-    return { prev, next, diff };
+    return { cutting: { prev, next }, woo: null, isTransfer: false };
   };
   const p = preview();
 
   return (
-    <Modal open={!!adjustProductId} onClose={handleClose} title="Adjust Cutting Room Stock">
+    <Modal open={!!adjustProductId} onClose={handleClose} title="Manage Cutting Room Stock">
       {product && (
         <form onSubmit={handleSubmit} className="space-y-5">
+
           {/* Product info */}
           <div className="rounded-lg bg-slate-50 px-4 py-3 dark:bg-slate-800">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{product.name}</p>
@@ -90,49 +118,126 @@ export function AdjustModal() {
             </div>
           </div>
 
-          {/* Adjustment type */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">Adjustment Type</label>
-            <div className="flex gap-2">
-              {typeOptions.map(o => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => setType(o.value)}
-                  className={[
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 py-2 text-sm font-medium transition-all',
-                    type === o.value ? o.color : 'border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400',
-                  ].join(' ')}
-                >
-                  {o.icon} {o.label}
-                </button>
-              ))}
-            </div>
+          {/* Mode tabs */}
+          <div className="flex rounded-lg border border-slate-200 p-1 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 gap-1">
+            <button
+              type="button"
+              onClick={() => { setMode('adjust'); setErr(''); }}
+              className={[
+                'flex-1 rounded-md py-1.5 text-sm font-medium transition-all',
+                mode === 'adjust'
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
+              ].join(' ')}
+            >
+              Adjust Stock
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('transfer'); setErr(''); }}
+              className={[
+                'flex-1 flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-all',
+                mode === 'transfer'
+                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
+                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200',
+              ].join(' ')}
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              Move to Woo
+            </button>
           </div>
+
+          {/* Transfer info banner */}
+          {mode === 'transfer' && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 space-y-1">
+              <p className="font-semibold">Transfers stock from cutting room → WooCommerce</p>
+              <p>Cutting room stock decreases · WooCommerce stock increases · Combined total stays the same · WooCommerce is updated live via API.</p>
+              {!product.woo_product_id && (
+                <p className="font-semibold text-amber-600 dark:text-amber-400 mt-1">⚠ This product has no WooCommerce ID — run a sync first.</p>
+              )}
+            </div>
+          )}
+
+          {/* Adjustment type selector (adjust mode only) */}
+          {mode === 'adjust' && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">Adjustment Type</label>
+              <div className="flex gap-2">
+                {adjustTypes.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => setType(o.value)}
+                    className={[
+                      'flex flex-1 items-center justify-center gap-1.5 rounded-lg border-2 py-2 text-sm font-medium transition-all',
+                      type === o.value ? o.color : 'border-slate-200 text-slate-500 hover:border-slate-300 dark:border-slate-700 dark:text-slate-400',
+                    ].join(' ')}
+                  >
+                    {o.icon} {o.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Quantity */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">
-              Quantity{type === 'set' ? ' (new absolute value)' : ''}
+              {mode === 'transfer' ? 'Quantity to Move' : type === 'set' ? 'New absolute value' : 'Quantity'}
             </label>
             <input
               type="number"
               min="0"
+              max={mode === 'transfer' ? product.cutting_room_stock : undefined}
               step="1"
               value={qty}
               onChange={e => setQty(e.target.value)}
               placeholder="0"
               className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             />
-            {p && qty && (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Cutting room: <span className="font-mono font-medium">{p.prev}</span>
-                {' → '}
-                <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{p.next}</span>
-                <span className={`ml-1 font-mono ${p.diff > 0 ? 'text-emerald-600' : p.diff < 0 ? 'text-red-600' : 'text-slate-400'}`}>
-                  ({p.diff > 0 ? '+' : ''}{p.diff})
-                </span>
-              </p>
+
+            {/* Preview */}
+            {p && qty && Number(qty) > 0 && (
+              <div className="mt-2 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs space-y-1">
+                {p.isTransfer ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Cutting room</span>
+                      <span>
+                        <span className="font-mono">{p.cutting.prev}</span>
+                        <span className="text-slate-400 mx-1">→</span>
+                        <span className="font-mono font-semibold text-red-600 dark:text-red-400">{p.cutting.next}</span>
+                        <span className="font-mono text-red-500 ml-1">(-{Number(qty)})</span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">WooCommerce</span>
+                      <span>
+                        <span className="font-mono">{p.woo!.prev}</span>
+                        <span className="text-slate-400 mx-1">→</span>
+                        <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{p.woo!.next}</span>
+                        <span className="font-mono text-emerald-500 ml-1">(+{Number(qty)})</span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-200 dark:border-slate-700 pt-1 mt-1">
+                      <span className="text-slate-500">Combined (unchanged)</span>
+                      <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{product.combined_stock}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Cutting room</span>
+                    <span>
+                      <span className="font-mono">{p.cutting.prev}</span>
+                      <span className="text-slate-400 mx-1">→</span>
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{p.cutting.next}</span>
+                      <span className={`font-mono ml-1 ${p.cutting.next - p.cutting.prev > 0 ? 'text-emerald-600' : p.cutting.next - p.cutting.prev < 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                        ({p.cutting.next - p.cutting.prev > 0 ? '+' : ''}{p.cutting.next - p.cutting.prev})
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -155,7 +260,7 @@ export function AdjustModal() {
               rows={2}
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="e.g. Received new shipment, Used in order #1234…"
+              placeholder={mode === 'transfer' ? 'e.g. Moving stock to website for online orders…' : 'e.g. Received new shipment, Used in order #1234…'}
               className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white resize-none"
             />
           </div>
@@ -166,7 +271,17 @@ export function AdjustModal() {
 
           <div className="flex gap-2 pt-1">
             <Button type="button" variant="secondary" className="flex-1" onClick={handleClose}>Cancel</Button>
-            <Button type="submit" variant="primary" className="flex-1" loading={loading}>Save Adjustment</Button>
+            <Button
+              type="submit"
+              variant={mode === 'transfer' ? 'primary' : 'primary'}
+              className="flex-1"
+              loading={loading}
+              disabled={mode === 'transfer' && !product.woo_product_id}
+            >
+              {mode === 'transfer'
+                ? <><ArrowRightLeft className="h-4 w-4" /> Move to WooCommerce</>
+                : 'Save Adjustment'}
+            </Button>
           </div>
         </form>
       )}

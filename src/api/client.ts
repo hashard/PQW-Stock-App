@@ -31,6 +31,13 @@ export interface AdjustResult {
   adjustment: StockAdjustment;
 }
 
+export interface TransferPayload {
+  product_id: string;
+  quantity:   number;
+  reason:     string;
+  user_name:  string;
+}
+
 export const api = {
   products: {
     list:   ()                              => req<Product[]>('/products'),
@@ -49,6 +56,10 @@ export const api = {
   },
   sync: {
     run: () => req<SyncResult>('/sync', { method: 'POST' }),
+  },
+  transfer: {
+    run: (payload: TransferPayload) =>
+      req<AdjustResult>('/transfer', { method: 'POST', body: JSON.stringify(payload) }),
   },
   export: {
     products:    () => { window.location.href = '/api/export/products'; },

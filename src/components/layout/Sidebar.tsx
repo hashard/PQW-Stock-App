@@ -13,7 +13,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="flex items-center justify-center px-5 py-4 border-b border-slate-700/50">
         <img
-          src="/logo.webp"
+          src="/cropped-PQW-Logo-RGB_resized-150px.jpg.webp"
           alt="Pauline's Quilters World"
           className="h-12 w-auto object-contain"
         />

@@ -137,7 +137,7 @@ export function ProductTable() {
             placeholder="Search product or SKU…"
             value={filters.search}
             onChange={e => setFilters({ search: e.target.value })}
-            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+            className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
           />
         </div>
 
@@ -188,9 +188,9 @@ export function ProductTable() {
       {/* ── Bulk action bar ────────────────────────────────────────────────── */}
       {isBulkMode && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-800 dark:bg-blue-900/20">
-          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">{selectedIds.size} selected</span>
+          <span className="text-sm font-medium text-brand-700 dark:text-brand-300">{selectedIds.size} selected</span>
           <select value={bulkType} onChange={e => setBulkType(e.target.value as typeof bulkType)}
-            className="h-8 rounded border border-blue-300 bg-white px-2 text-xs dark:border-blue-700 dark:bg-slate-800 dark:text-white">
+            className="h-8 rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white">
             <option value="add">Add</option>
             <option value="remove">Remove</option>
             <option value="set">Set to</option>
@@ -198,9 +198,9 @@ export function ProductTable() {
           <input type="number" min="0" placeholder="Qty" value={bulkQty} onChange={e => setBulkQty(e.target.value)}
             className="h-8 w-20 rounded border border-blue-300 bg-white px-2 text-xs font-mono dark:border-blue-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
           <input type="text" placeholder="Staff name" value={bulkUser} onChange={e => setBulkUser(e.target.value)}
-            className="h-8 w-28 rounded border border-blue-300 bg-white px-2 text-xs dark:border-blue-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            className="h-8 w-28 rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
           <input type="text" placeholder="Reason (required)" value={bulkReason} onChange={e => setBulkReason(e.target.value)}
-            className="h-8 flex-1 min-w-[140px] rounded border border-blue-300 bg-white px-2 text-xs dark:border-blue-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+            className="h-8 flex-1 min-w-[140px] rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
           <Button size="xs" variant="primary" loading={bulkLoading}
             disabled={!bulkQty || !bulkReason.trim() || !bulkUser.trim()}
             onClick={applyBulk}>Apply</Button>
@@ -255,7 +255,7 @@ export function ProductTable() {
                     key={product.id}
                     className={[
                       'group transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
-                      selectedIds.has(product.id) ? 'bg-blue-50 dark:bg-blue-900/20' : '',
+                      selectedIds.has(product.id) ? 'bg-brand-50 dark:bg-brand-900/20' : '',
                     ].join(' ')}
                   >
                     {isBulkMode && (
@@ -296,11 +296,11 @@ export function ProductTable() {
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => openAdjustModal(product.id)}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-slate-800 dark:text-slate-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-slate-800 dark:text-slate-100 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-700 dark:hover:text-brand-300 transition-colors"
                         title="Click to adjust"
                       >
                         {product.cutting_room_stock}
-                        <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-blue-400" />
+                        <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
                       </button>
                     </td>
 

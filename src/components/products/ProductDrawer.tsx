@@ -132,7 +132,7 @@ export function ProductDrawer() {
                 <input
                   type="number" min="0" value={threshold}
                   onChange={e => setThreshold(e.target.value)}
-                  className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-mono dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-mono dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
                 <Button size="sm" variant="primary" loading={saving} onClick={saveThreshold}><Save className="h-3.5 w-3.5" /> Save</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditThreshold(false)}>Cancel</Button>
@@ -156,7 +156,7 @@ export function ProductDrawer() {
               <div className="space-y-2">
                 <textarea
                   rows={3} value={notes} onChange={e => setNotes(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
                 />
                 <div className="flex gap-2">
                   <Button size="sm" variant="primary" loading={saving} onClick={saveNotes}><Save className="h-3.5 w-3.5" /> Save</Button>

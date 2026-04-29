@@ -18,7 +18,7 @@ function SyncBadge() {
   if (state === 'idle') return null;
 
   const cfg = {
-    syncing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: 'text-blue-600 dark:text-blue-400',     label: message || 'Syncing…' },
+    syncing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: 'text-brand-600 dark:text-brand-400',     label: message || 'Syncing…' },
     success: { icon: <CheckCircle className="h-3.5 w-3.5" />,           color: 'text-emerald-600 dark:text-emerald-400', label: `Synced ${synced_count} products` },
     error:   { icon: <AlertCircle className="h-3.5 w-3.5" />,           color: 'text-red-600 dark:text-red-400',          label: message || 'Sync failed' },
   }[state];
@@ -114,7 +114,7 @@ export function Layout() {
         <div className="flex flex-1 flex-col min-w-0">
 
           {/* Top header */}
-          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 dark:border-slate-700 dark:bg-slate-900 gap-2">
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-brand-100 bg-white px-4 dark:border-brand-900 dark:bg-slate-900 gap-2">
             <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setMobileSidebarOpen(v => !v)}>
               {mobileSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>

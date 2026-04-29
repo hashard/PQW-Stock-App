@@ -10,7 +10,7 @@ interface Props extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants: Record<Variant, string> = {
-  primary:   'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 disabled:bg-blue-300',
+  primary:   'bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-500 disabled:bg-brand-300',
   secondary: 'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-600 dark:hover:bg-slate-700',
   ghost:     'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100',
   danger:    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
@@ -30,7 +30,7 @@ export const Button = forwardRef<HTMLButtonElement, Props>(({
     disabled={disabled || loading}
     className={[
       'inline-flex items-center justify-center rounded-md font-medium transition-colors',
-      'focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white dark:focus:ring-offset-slate-900',
+      'focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-white focus:ring-brand-500 dark:focus:ring-offset-slate-900',
       'disabled:pointer-events-none disabled:opacity-50',
       variants[variant], sizes[size], className,
     ].join(' ')}

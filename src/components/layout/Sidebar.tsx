@@ -9,9 +9,9 @@ const links = [
 
 export function Sidebar() {
   return (
-    <nav className="flex h-full flex-col bg-slate-900 dark:bg-slate-950 w-56 shrink-0">
+    <nav className="flex h-full flex-col w-56 shrink-0" style={{ backgroundColor: '#1E1240' }}>
       {/* Logo */}
-      <div className="flex items-center justify-center px-4 py-4 border-b border-slate-700/50">
+      <div className="flex items-center justify-center px-4 py-4 border-b border-white/10">
         <div className="rounded-lg bg-white px-3 py-2">
           <img
             src="/cropped-PQW-Logo-RGB_resized-150px.jpg.webp"
@@ -31,8 +31,8 @@ export function Sidebar() {
               className={({ isActive }) => [
                 'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+                  ? 'bg-brand-600 text-white'
+                  : 'text-white/60 hover:bg-white/10 hover:text-white',
               ].join(' ')}
             >
               <Icon className="h-4 w-4 shrink-0" />
@@ -43,8 +43,8 @@ export function Sidebar() {
       </ul>
 
       {/* Footer */}
-      <div className="border-t border-slate-700/50 px-5 py-4">
-        <p className="text-xs text-slate-500">v1.0 · PQW Internal</p>
+      <div className="border-t border-white/10 px-5 py-4">
+        <p className="text-xs text-white/30">v1.0 · PQW Internal</p>
       </div>
     </nav>
   );

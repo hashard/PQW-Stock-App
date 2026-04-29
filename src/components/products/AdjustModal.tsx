@@ -197,7 +197,7 @@ export function AdjustModal() {
               value={qty}
               onChange={e => setQty(e.target.value)}
               placeholder="0"
-              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-mono shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             />
 
             {/* Preview */}
@@ -238,7 +238,7 @@ export function AdjustModal() {
             <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">Staff Name <span className="text-red-500">*</span></label>
             <input
               type="text" value={user} onChange={e => setUser(e.target.value)} placeholder="Your name"
-              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
             />
           </div>
 
@@ -252,7 +252,7 @@ export function AdjustModal() {
                 mode === 'woo'      ? 'e.g. Correcting stock count after stock take…' :
                                      'e.g. Received new shipment, used in order #1234…'
               }
-              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white resize-none"
+              className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white resize-none"
             />
           </div>
 

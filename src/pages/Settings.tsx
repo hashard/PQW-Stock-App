@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 
 export function Settings() {
   const { settings, setSettings, syncStatus } = useStore();
-  const { runSync } = useSync();
+  const { runPull } = useSync();
 
   const [form, setForm]             = useState(settings);
   const [saving, setSaving]         = useState(false);
@@ -221,8 +221,8 @@ export function Settings() {
           <Button type="submit" variant="primary" loading={saving}>
             <Save className="h-4 w-4" /> Save Settings
           </Button>
-          <Button type="button" variant="secondary" loading={syncStatus.state === 'syncing'} onClick={runSync}>
-            <RefreshCw className="h-4 w-4" /> Test Woo Sync
+          <Button type="button" variant="secondary" loading={syncStatus.state === 'syncing'} onClick={runPull}>
+            <RefreshCw className="h-4 w-4" /> Test Pull
           </Button>
         </div>
 

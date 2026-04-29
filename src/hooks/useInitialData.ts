@@ -37,7 +37,7 @@ export function useInitialData() {
     const ms = settings.auto_sync_interval * 60 * 1000;
     const timer = setInterval(async () => {
       try {
-        const result = await api.sync.run();
+        const result = await api.sync.pull();
         useStore.getState().setProducts(result.products);
         useStore.getState().setSyncStatus({
           state: 'success',

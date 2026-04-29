@@ -414,6 +414,56 @@ app.post('/api/sync', async (_req, res) => {
   }
 });
 
+// ── WooCommerce Push (local → WooCommerce) ────────────────────────────────────
+app.post('/api/push-woo', async (_req, res) => {
+  try {
+    const settings = readData('settings');
+    const { woo_url, consumer_key, consumer_secret } = settings;
+    if (!woo_url || !consumer_key || !consumer_secret) {
+      return res.status(400).json({ error: 'WooCommerce credentials are not configured. Go to Settings first.' });
+    }
+
+    const base = woo_url.replace(/\/$/, '');
+    const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+    const products = readData('products');
+    const pushable = products.filter(p => p.woo_product_id);
+
+    if (!pushable.length) {
+      return res.status(400).json({ error: 'No products have a WooCommerce ID. Run a Pull first.' });
+    }
+
+    let pushed = 0;
+    const errors = [];
+
+    for (const product of pushable) {
+      try {
+        const wooRes = await fetch(`${base}/wp-json/wc/v3/products/${product.woo_product_id}`, {
+          method: 'PUT',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock_quantity: product.woo_stock ?? 0, manage_stock: true }),
+        });
+        if (!wooRes.ok) {
+          const body = await wooRes.text();
+          errors.push(`${product.sku}: ${wooRes.status} ${body}`);
+        } else {
+          pushed++;
+        }
+      } catch (err) {
+        errors.push(`${product.sku}: ${err.message}`);
+      }
+    }
+
+    res.json({
+      pushed,
+      failed:    errors.length,
+      errors:    errors.slice(0, 5), // return first 5 errors if any
+      pushed_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Google Sheets ─────────────────────────────────────────────────────────────
 
 function getSheetsClient(credentialsJson) {

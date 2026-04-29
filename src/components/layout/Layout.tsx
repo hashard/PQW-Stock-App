@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import {
   RefreshCw, CheckCircle, AlertCircle, Moon, Sun, Loader2, Menu, X,
-  Upload, Download, Sheet,
+  Upload, Download, Sheet, ArrowDownToLine, ArrowUpFromLine,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { AdjustModal } from '../products/AdjustModal';
@@ -55,7 +55,7 @@ function SheetsBadge() {
 
 export function Layout() {
   const { isDarkMode, toggleDarkMode, syncStatus, settings, setProducts, setSheetsStatus, setAdjustments } = useStore();
-  const { runSync } = useSync();
+  const { runPull, runPush } = useSync();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [pushingSheet, setPushingSheet] = useState(false);
   const [pullingSheet, setPullingSheet] = useState(false);
@@ -139,10 +139,28 @@ export function Layout() {
               </>
             )}
 
-            {/* Woo sync */}
-            <Button variant="secondary" size="sm" loading={syncStatus.state === 'syncing'} onClick={runSync} title="Sync from WooCommerce">
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sync Woo</span>
+            {/* Woo push */}
+            <Button
+              variant="secondary" size="sm"
+              loading={syncStatus.state === 'syncing'}
+              onClick={() => {
+                if (confirm('Push all local WooCommerce stock values to the live store?')) runPush();
+              }}
+              title="Push local stock values to WooCommerce"
+            >
+              <ArrowUpFromLine className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Push Woo</span>
+            </Button>
+
+            {/* Woo pull */}
+            <Button
+              variant="secondary" size="sm"
+              loading={syncStatus.state === 'syncing'}
+              onClick={runPull}
+              title="Pull latest stock from WooCommerce"
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Pull Woo</span>
             </Button>
 
             {/* Dark mode */}

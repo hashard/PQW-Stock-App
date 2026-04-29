@@ -55,7 +55,8 @@ export const api = {
       req<AppSettings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   },
   sync: {
-    run: () => req<SyncResult>('/sync', { method: 'POST' }),
+    pull: () => req<SyncResult>('/sync', { method: 'POST' }),
+    push: () => req<{ pushed: number; failed: number; errors: string[]; pushed_at: string }>('/push-woo', { method: 'POST' }),
   },
   transfer: {
     run: (payload: TransferPayload) =>

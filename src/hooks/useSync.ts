@@ -4,24 +4,42 @@ import { useStore } from '../store';
 export function useSync() {
   const { setSyncStatus, setProducts } = useStore();
 
-  async function runSync() {
-    setSyncStatus({ state: 'syncing', message: 'Syncing with WooCommerce…' });
+  async function runPull() {
+    setSyncStatus({ state: 'syncing', message: 'Pulling from WooCommerce…' });
     try {
-      const result = await api.sync.run();
+      const result = await api.sync.pull();
       setProducts(result.products);
       setSyncStatus({
-        state:         'success',
+        state:          'success',
         last_synced_at: result.synced_at,
-        synced_count:  result.synced_count,
-        message:       `Synced ${result.synced_count} products`,
+        synced_count:   result.synced_count,
+        message:        `Pulled ${result.synced_count} products from WooCommerce`,
       });
     } catch (err) {
       setSyncStatus({
         state:   'error',
-        message: err instanceof Error ? err.message : 'Sync failed',
+        message: err instanceof Error ? err.message : 'Pull failed',
       });
     }
   }
 
-  return { runSync };
+  async function runPush() {
+    setSyncStatus({ state: 'syncing', message: 'Pushing to WooCommerce…' });
+    try {
+      const result = await api.sync.push();
+      setSyncStatus({
+        state:          'success',
+        last_synced_at: result.pushed_at,
+        synced_count:   result.pushed,
+        message:        `Pushed ${result.pushed} products to WooCommerce${result.failed ? ` (${result.failed} failed)` : ''}`,
+      });
+    } catch (err) {
+      setSyncStatus({
+        state:   'error',
+        message: err instanceof Error ? err.message : 'Push failed',
+      });
+    }
+  }
+
+  return { runPull, runPush };
 }

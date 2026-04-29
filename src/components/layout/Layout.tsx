@@ -1,16 +1,13 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import {
-  RefreshCw, CheckCircle, AlertCircle, Moon, Sun, Loader2, Menu, X,
-  Upload, Download, Sheet, ArrowDownToLine, ArrowUpFromLine,
+  CheckCircle, AlertCircle, Moon, Sun, Loader2, Menu, X, Sheet,
 } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { AdjustModal } from '../products/AdjustModal';
 import { ProductDrawer } from '../products/ProductDrawer';
 import { useStore } from '../../store';
-import { useSync } from '../../hooks/useSync';
 import { Button } from '../ui/Button';
-import { api } from '../../api/client';
 
 function SyncBadge() {
   const { syncStatus } = useStore();
@@ -18,9 +15,9 @@ function SyncBadge() {
   if (state === 'idle') return null;
 
   const cfg = {
-    syncing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: 'text-brand-600 dark:text-brand-400',     label: message || 'Syncing…' },
-    success: { icon: <CheckCircle className="h-3.5 w-3.5" />,           color: 'text-emerald-600 dark:text-emerald-400', label: `Synced ${synced_count} products` },
-    error:   { icon: <AlertCircle className="h-3.5 w-3.5" />,           color: 'text-red-600 dark:text-red-400',          label: message || 'Sync failed' },
+    syncing: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: 'text-brand-600 dark:text-brand-400',    label: message || 'Syncing…' },
+    success: { icon: <CheckCircle className="h-3.5 w-3.5" />,          color: 'text-emerald-600 dark:text-emerald-400', label: `${synced_count} products synced` },
+    error:   { icon: <AlertCircle className="h-3.5 w-3.5" />,          color: 'text-red-600 dark:text-red-400',         label: message || 'Sync failed' },
   }[state];
 
   return (
@@ -39,9 +36,9 @@ function SheetsBadge() {
   if (state === 'idle') return null;
 
   const cfg = {
-    busy:  { icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, color: 'text-green-600 dark:text-green-400',     label: message || 'Updating sheet…' },
-    ok:    { icon: <CheckCircle className="h-3.5 w-3.5" />,           color: 'text-green-600 dark:text-green-400',     label: message },
-    error: { icon: <AlertCircle className="h-3.5 w-3.5" />,           color: 'text-red-600 dark:text-red-400',          label: message },
+    busy:  { icon: <Loader2    className="h-3.5 w-3.5 animate-spin" />, color: 'text-teal-600 dark:text-teal-400',      label: message || 'Updating sheet…' },
+    ok:    { icon: <CheckCircle className="h-3.5 w-3.5" />,             color: 'text-teal-600 dark:text-teal-400',      label: message },
+    error: { icon: <AlertCircle className="h-3.5 w-3.5" />,             color: 'text-red-600 dark:text-red-400',        label: message },
   }[state];
 
   if (!cfg) return null;
@@ -54,46 +51,8 @@ function SheetsBadge() {
 }
 
 export function Layout() {
-  const { isDarkMode, toggleDarkMode, syncStatus, settings, setProducts, setSheetsStatus, setAdjustments } = useStore();
-  const { runPull, runPush } = useSync();
+  const { isDarkMode, toggleDarkMode } = useStore();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [pushingSheet, setPushingSheet] = useState(false);
-  const [pullingSheet, setPullingSheet] = useState(false);
-
-  const sheetsEnabled = settings.sheets_enabled && settings.sheets_id && settings.sheets_credentials_json;
-
-  async function handleSheetsPush() {
-    setPushingSheet(true);
-    setSheetsStatus({ state: 'busy', message: 'Pushing to sheet…' });
-    try {
-      const result = await api.sheets.push();
-      setSheetsStatus({ state: 'ok', message: `Sheet updated — ${result.rows} rows` });
-      setTimeout(() => setSheetsStatus({ state: 'idle', message: '' }), 4000);
-    } catch (err) {
-      setSheetsStatus({ state: 'error', message: err instanceof Error ? err.message : 'Push failed' });
-    } finally {
-      setPushingSheet(false);
-    }
-  }
-
-  async function handleSheetsPull() {
-    if (!confirm('This will overwrite cutting room stock values from the Google Sheet. Continue?')) return;
-    setPullingSheet(true);
-    setSheetsStatus({ state: 'busy', message: 'Pulling from sheet…' });
-    try {
-      const result = await api.sheets.pull();
-      setProducts(result.products);
-      // Refresh adjustments to include the sheet_import entries
-      const adj = await api.adjustments.list();
-      setAdjustments(adj);
-      setSheetsStatus({ state: 'ok', message: `Pulled — ${result.updated} products updated` });
-      setTimeout(() => setSheetsStatus({ state: 'idle', message: '' }), 4000);
-    } catch (err) {
-      setSheetsStatus({ state: 'error', message: err instanceof Error ? err.message : 'Pull failed' });
-    } finally {
-      setPullingSheet(false);
-    }
-  }
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>
@@ -124,44 +83,6 @@ export function Layout() {
             {/* Status badges */}
             <SyncBadge />
             <SheetsBadge />
-
-            {/* Sheets buttons — only shown when sheets is configured */}
-            {sheetsEnabled && (
-              <>
-                <Button variant="secondary" size="sm" loading={pullingSheet} onClick={handleSheetsPull} title="Pull cutting room stock from Google Sheet">
-                  <Download className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Pull Sheet</span>
-                </Button>
-                <Button variant="secondary" size="sm" loading={pushingSheet} onClick={handleSheetsPush} title="Push all stock to Google Sheet">
-                  <Upload className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Push Sheet</span>
-                </Button>
-              </>
-            )}
-
-            {/* Woo push */}
-            <Button
-              variant="secondary" size="sm"
-              loading={syncStatus.state === 'syncing'}
-              onClick={() => {
-                if (confirm('Push all local WooCommerce stock values to the live store?')) runPush();
-              }}
-              title="Push local stock values to WooCommerce"
-            >
-              <ArrowUpFromLine className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Push Woo</span>
-            </Button>
-
-            {/* Woo pull */}
-            <Button
-              variant="secondary" size="sm"
-              loading={syncStatus.state === 'syncing'}
-              onClick={runPull}
-              title="Pull latest stock from WooCommerce"
-            >
-              <ArrowDownToLine className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Pull Woo</span>
-            </Button>
 
             {/* Dark mode */}
             <Button variant="ghost" size="sm" onClick={toggleDarkMode} aria-label="Toggle dark mode">

@@ -1,5 +1,5 @@
 export type StockStatus    = 'in_stock' | 'low_stock' | 'out_of_stock';
-export type AdjustmentType = 'add' | 'remove' | 'set' | 'transfer_to_woo' | 'woo_edit';
+export type AdjustmentType = 'add' | 'remove' | 'set' | 'transfer_to_woo' | 'woo_edit' | 'sheet_import';
 export type SortDir        = 'asc' | 'desc';
 
 export interface Product {
@@ -34,11 +34,15 @@ export interface StockAdjustment {
 }
 
 export interface AppSettings {
-  woo_url:              string;
-  consumer_key:         string;
-  consumer_secret:      string;
-  default_threshold:    number;
-  auto_sync_interval:   number; // minutes; 0 = disabled
+  woo_url:                  string;
+  consumer_key:             string;
+  consumer_secret:          string;
+  default_threshold:        number;
+  auto_sync_interval:       number; // minutes; 0 = disabled
+  sheets_enabled:           boolean;
+  sheets_id:                string;
+  sheets_tab:               string;
+  sheets_credentials_json:  string;
 }
 
 export interface SyncStatus {

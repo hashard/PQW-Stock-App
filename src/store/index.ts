@@ -6,6 +6,7 @@ import type {
 const DEFAULT_SETTINGS: AppSettings = {
   woo_url: '', consumer_key: '', consumer_secret: '',
   default_threshold: 5, auto_sync_interval: 0,
+  sheets_enabled: false, sheets_id: '', sheets_tab: 'Stock', sheets_credentials_json: '',
 };
 
 const DEFAULT_SYNC: SyncStatus = {
@@ -20,6 +21,7 @@ interface Store {
   syncStatus:     SyncStatus;
   isLoading:      boolean;
   error:          string | null;
+  sheetsStatus:   { state: 'idle' | 'busy' | 'ok' | 'error'; message: string };
 
   // ── UI ────────────────────────────────────────────────────────────────────
   isDarkMode:          boolean;
@@ -42,6 +44,7 @@ interface Store {
   setSyncStatus:  (s: Partial<SyncStatus>) => void;
   setLoading:     (v: boolean)    => void;
   setError:       (e: string | null) => void;
+  setSheetsStatus:(s: { state: 'idle' | 'busy' | 'ok' | 'error'; message: string }) => void;
 
   // ── UI actions ────────────────────────────────────────────────────────────
   toggleDarkMode:    () => void;
@@ -66,8 +69,9 @@ export const useStore = create<Store>((set) => ({
   adjustments: [],
   settings:    DEFAULT_SETTINGS,
   syncStatus:  DEFAULT_SYNC,
-  isLoading:   false,
-  error:       null,
+  isLoading:    false,
+  error:        null,
+  sheetsStatus: { state: 'idle', message: '' },
 
   isDarkMode:      storedDark,
   adjustProductId: null,
@@ -85,8 +89,9 @@ export const useStore = create<Store>((set) => ({
   addAdjustment:  (adj)         => set(s => ({ adjustments: [adj, ...s.adjustments] })),
   setSettings:    (settings)    => set({ settings }),
   setSyncStatus:  (status)      => set(s => ({ syncStatus: { ...s.syncStatus, ...status } })),
-  setLoading:     (isLoading)   => set({ isLoading }),
-  setError:       (error)       => set({ error }),
+  setLoading:      (isLoading)    => set({ isLoading }),
+  setError:        (error)        => set({ error }),
+  setSheetsStatus: (sheetsStatus) => set({ sheetsStatus }),
 
   toggleDarkMode: () => set(s => {
     const v = !s.isDarkMode;

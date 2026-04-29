@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { google } from 'googleapis';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +30,10 @@ const DEFAULTS = {
     consumer_secret: '',
     default_threshold: 5,
     auto_sync_interval: 0,
+    sheets_enabled: false,
+    sheets_id: '',
+    sheets_tab: 'Stock',
+    sheets_credentials_json: '',
   },
 };
 
@@ -124,6 +129,7 @@ app.post('/api/adjustments', (req, res) => {
   adjustments.push(adjustment);
   writeData('adjustments', adjustments);
 
+  silentSheetsPush(products);
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
@@ -215,6 +221,7 @@ app.post('/api/woo-stock', async (req, res) => {
   adjustments.push(adjustment);
   writeData('adjustments', adjustments);
 
+  silentSheetsPush(products);
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
@@ -307,6 +314,7 @@ app.post('/api/transfer', async (req, res) => {
   adjustments.push(adjustment);
   writeData('adjustments', adjustments);
 
+  silentSheetsPush(products);
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
@@ -401,6 +409,161 @@ app.post('/api/sync', async (_req, res) => {
       synced_count: wooItems.length,
       synced_at:    syncedAt,
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Google Sheets ─────────────────────────────────────────────────────────────
+
+function getSheetsClient(credentialsJson) {
+  const credentials = JSON.parse(credentialsJson);
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  return google.sheets({ version: 'v4', auth });
+}
+
+const SHEET_HEADERS = [
+  'Product Name', 'SKU', 'Category',
+  'Woo Stock', 'Cutting Room', 'Combined',
+  'Status', 'Threshold', 'Last Updated',
+];
+
+async function pushAllToSheets(settings, products) {
+  if (!settings.sheets_enabled || !settings.sheets_id || !settings.sheets_credentials_json) return;
+
+  const sheets   = getSheetsClient(settings.sheets_credentials_json);
+  const tabName  = settings.sheets_tab || 'Stock';
+  const range    = `${tabName}!A1`;
+  const now      = new Date().toISOString();
+
+  const rows = products.map(computeProduct).map(p => [
+    p.name, p.sku, p.category,
+    p.woo_stock, p.cutting_room_stock, p.combined_stock,
+    p.status, p.low_stock_threshold, now,
+  ]);
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: settings.sheets_id,
+    range,
+    valueInputOption: 'RAW',
+    requestBody: { values: [SHEET_HEADERS, ...rows] },
+  });
+}
+
+// Fire-and-forget push — never blocks an API response
+function silentSheetsPush(products) {
+  const settings = readData('settings');
+  pushAllToSheets(settings, products).catch(err =>
+    console.error('[Sheets] Auto-push failed:', err.message),
+  );
+}
+
+// Manual push
+app.post('/api/sheets/push', async (_req, res) => {
+  const settings = readData('settings');
+  if (!settings.sheets_enabled)              return res.status(400).json({ error: 'Google Sheets is not enabled.' });
+  if (!settings.sheets_id)                   return res.status(400).json({ error: 'Sheet ID is not configured.' });
+  if (!settings.sheets_credentials_json)     return res.status(400).json({ error: 'Service account credentials are not configured.' });
+
+  try {
+    const products = readData('products');
+    await pushAllToSheets(settings, products);
+    res.json({ ok: true, rows: products.length, pushed_at: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: `Sheets push failed: ${err.message}` });
+  }
+});
+
+// Pull cutting room stock from sheet
+app.post('/api/sheets/pull', async (_req, res) => {
+  const settings = readData('settings');
+  if (!settings.sheets_enabled)              return res.status(400).json({ error: 'Google Sheets is not enabled.' });
+  if (!settings.sheets_id)                   return res.status(400).json({ error: 'Sheet ID is not configured.' });
+  if (!settings.sheets_credentials_json)     return res.status(400).json({ error: 'Service account credentials are not configured.' });
+
+  try {
+    const sheets  = getSheetsClient(settings.sheets_credentials_json);
+    const tabName = settings.sheets_tab || 'Stock';
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: settings.sheets_id,
+      range: `${tabName}!A:I`,
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) return res.status(400).json({ error: 'Sheet appears empty or has no data rows.' });
+
+    const headers    = rows[0];
+    const skuCol     = headers.indexOf('SKU');
+    const cuttingCol = headers.indexOf('Cutting Room');
+
+    if (skuCol === -1 || cuttingCol === -1) {
+      return res.status(400).json({ error: 'Sheet must have "SKU" and "Cutting Room" column headers in row 1.' });
+    }
+
+    const sheetMap = new Map();
+    for (const row of rows.slice(1)) {
+      const sku     = (row[skuCol] || '').trim();
+      const cutting = parseInt(row[cuttingCol], 10);
+      if (sku && !isNaN(cutting)) sheetMap.set(sku, cutting);
+    }
+
+    const products    = readData('products');
+    const adjustments = readData('adjustments');
+    const now         = new Date().toISOString();
+    let   updated     = 0;
+
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      if (!sheetMap.has(p.sku)) continue;
+
+      const newCutting = sheetMap.get(p.sku);
+      const previous   = p.cutting_room_stock ?? 0;
+      if (newCutting === previous) continue;
+
+      adjustments.push({
+        id:              uid(),
+        product_id:      p.id,
+        sku:             p.sku,
+        product_name:    p.name,
+        adjustment_type: 'sheet_import',
+        quantity_change: newCutting - previous,
+        previous_stock:  previous,
+        new_stock:       newCutting,
+        reason:          'Imported from Google Sheet',
+        user_name:       'Sheet Import',
+        created_at:      now,
+      });
+
+      products[i] = { ...p, cutting_room_stock: newCutting, updated_at: now };
+      updated++;
+    }
+
+    writeData('products', products);
+    writeData('adjustments', adjustments);
+
+    res.json({
+      ok:         true,
+      updated,
+      total_rows: sheetMap.size,
+      pulled_at:  now,
+      products:   products.map(computeProduct),
+    });
+  } catch (err) {
+    res.status(500).json({ error: `Sheets pull failed: ${err.message}` });
+  }
+});
+
+// Test connection
+app.post('/api/sheets/test', async (_req, res) => {
+  const settings = readData('settings');
+  try {
+    const sheets  = getSheetsClient(settings.sheets_credentials_json);
+    const info    = await sheets.spreadsheets.get({ spreadsheetId: settings.sheets_id });
+    res.json({ ok: true, title: info.data.properties?.title });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

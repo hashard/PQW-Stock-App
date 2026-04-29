@@ -69,4 +69,9 @@ export const api = {
     products:    () => { window.location.href = '/api/export/products'; },
     adjustments: () => { window.location.href = '/api/export/adjustments'; },
   },
+  sheets: {
+    push: () => req<{ ok: boolean; rows: number; pushed_at: string }>('/sheets/push', { method: 'POST' }),
+    pull: () => req<{ ok: boolean; updated: number; total_rows: number; pulled_at: string; products: Product[] }>('/sheets/pull', { method: 'POST' }),
+    test: () => req<{ ok: boolean; title: string }>('/sheets/test', { method: 'POST' }),
+  },
 };

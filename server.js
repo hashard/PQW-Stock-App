@@ -560,12 +560,42 @@ app.post('/api/sheets/pull', async (_req, res) => {
 // Test connection
 app.post('/api/sheets/test', async (_req, res) => {
   const settings = readData('settings');
+
+  // Pre-flight checks with clear messages
+  if (!settings.sheets_credentials_json?.trim()) {
+    return res.status(400).json({ error: 'No credentials pasted. Add the JSON key file contents in Settings.' });
+  }
+  let creds;
+  try {
+    creds = JSON.parse(settings.sheets_credentials_json);
+  } catch {
+    return res.status(400).json({ error: 'Credentials JSON is invalid — make sure you pasted the entire file including the { } braces.' });
+  }
+  if (!creds.client_email || !creds.private_key) {
+    return res.status(400).json({ error: 'Credentials JSON is missing client_email or private_key fields.' });
+  }
+  if (!settings.sheets_id?.trim()) {
+    return res.status(400).json({ error: 'Sheet ID is empty. Enter the ID from your Google Sheet URL.' });
+  }
+
   try {
     const sheets  = getSheetsClient(settings.sheets_credentials_json);
-    const info    = await sheets.spreadsheets.get({ spreadsheetId: settings.sheets_id });
+    const info    = await sheets.spreadsheets.get({ spreadsheetId: settings.sheets_id.trim() });
     res.json({ ok: true, title: info.data.properties?.title });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    const code = err?.code || err?.status;
+    const msg  = err?.message || '';
+    let friendly = msg;
+    if (code === 404 || msg.includes('not found') || msg.includes('NOT_FOUND')) {
+      friendly = `Sheet not found (404). Check: 1) Sheet ID is correct, 2) The sheet is shared with ${creds.client_email}`;
+    } else if (code === 403 || msg.includes('permission') || msg.includes('PERMISSION_DENIED')) {
+      friendly = `Permission denied. Make sure the sheet is shared with ${creds.client_email} as Editor, and Google Sheets API is enabled in your Cloud project.`;
+    } else if (msg.includes('API') || msg.includes('disabled') || msg.includes('accessNotConfigured')) {
+      friendly = `Google Sheets API is not enabled. Go to console.cloud.google.com → APIs & Services → Enable APIs → search "Google Sheets API" → Enable.`;
+    } else if (msg.includes('invalid_grant') || msg.includes('DECODER')) {
+      friendly = `Credentials are invalid or expired. Download a fresh JSON key from Google Cloud Console.`;
+    }
+    res.status(500).json({ error: friendly });
   }
 });
 

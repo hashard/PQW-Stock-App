@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   Save, Eye, EyeOff, CheckCircle, AlertCircle, Sheet, ExternalLink,
-  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2,
+  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2, Smartphone, Copy,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../store';
 import { api } from '../api/client';
 import { useSync } from '../hooks/useSync';
@@ -23,8 +24,14 @@ export function Settings() {
   const [pullingSheet, setPullingSheet]           = useState(false);
   const [testingSheets, setTestingSheets]         = useState(false);
   const [sheetsTestResult, setSheetsTestResult]   = useState<{ ok: boolean; message: string } | null>(null);
+  const [localUrl, setLocalUrl]                   = useState('');
+  const [urlCopied, setUrlCopied]                 = useState(false);
 
   useEffect(() => { setForm(settings); }, [settings]);
+
+  useEffect(() => {
+    api.localUrl().then(r => setLocalUrl(r.url)).catch(() => {});
+  }, []);
 
   const sheetsEnabled = settings.sheets_enabled && settings.sheets_id && settings.sheets_credentials_json;
 
@@ -212,6 +219,60 @@ export function Settings() {
               </div>
             )}
           </>
+        )}
+      </section>
+
+      {/* ── Mobile Access QR Code ────────────────────────────────────────── */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+        <div className="flex items-center gap-2 mb-4">
+          <Smartphone className="h-4 w-4 text-brand-500" />
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Mobile Access</h2>
+        </div>
+
+        {localUrl ? (
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            {/* QR code */}
+            <div className="shrink-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-white p-3">
+              <QRCodeSVG
+                value={localUrl}
+                size={160}
+                fgColor="#1E1240"
+                bgColor="#ffffff"
+                level="M"
+              />
+            </div>
+
+            {/* Instructions */}
+            <div className="space-y-3 text-center sm:text-left">
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Scan with your phone's camera to open the dashboard on any device connected to the same Wi-Fi network.
+              </p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 px-3 py-1.5 text-xs font-mono text-slate-700 dark:text-slate-300 truncate">
+                  {localUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(localUrl);
+                    setUrlCopied(true);
+                    setTimeout(() => setUrlCopied(false), 2000);
+                  }}
+                  className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 p-1.5 text-slate-500 hover:text-brand-600 hover:border-brand-300 transition-colors"
+                  title="Copy URL"
+                >
+                  {urlCopied ? <CheckCircle className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">
+                Make sure this PC and your phone are on the same network. The server must be running.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Detecting local network address…
+          </div>
         )}
       </section>
 

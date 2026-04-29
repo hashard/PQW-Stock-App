@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 
@@ -675,6 +676,21 @@ app.get('/api/export/adjustments', (_req, res) => {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename=pqw-adjustments.csv');
   res.send(csv);
+});
+
+// ── Local network URL (for QR code) ──────────────────────────────────────────
+app.get('/api/local-url', (_req, res) => {
+  let localIp = 'localhost';
+  const interfaces = os.networkInterfaces();
+  outer: for (const iface of Object.values(interfaces)) {
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) {
+        localIp = alias.address;
+        break outer;
+      }
+    }
+  }
+  res.json({ url: `http://${localIp}:${PORT}` });
 });
 
 // ── SPA Fallback ──────────────────────────────────────────────────────────────

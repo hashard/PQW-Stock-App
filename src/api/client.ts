@@ -75,4 +75,5 @@ export const api = {
     pull: () => req<{ ok: boolean; updated: number; total_rows: number; pulled_at: string; products: Product[] }>('/sheets/pull', { method: 'POST' }),
     test: () => req<{ ok: boolean; title: string }>('/sheets/test', { method: 'POST' }),
   },
+  localUrl: () => req<{ url: string }>('/local-url'),
 };

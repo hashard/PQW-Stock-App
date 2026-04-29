@@ -11,12 +11,14 @@ export function Sidebar() {
   return (
     <nav className="flex h-full flex-col bg-slate-900 dark:bg-slate-950 w-56 shrink-0">
       {/* Logo */}
-      <div className="flex items-center justify-center px-5 py-4 border-b border-slate-700/50">
-        <img
-          src="/cropped-PQW-Logo-RGB_resized-150px.jpg.webp"
-          alt="Pauline's Quilters World"
-          className="h-12 w-auto object-contain"
-        />
+      <div className="flex items-center justify-center px-4 py-4 border-b border-slate-700/50">
+        <div className="rounded-lg bg-white px-3 py-2">
+          <img
+            src="/cropped-PQW-Logo-RGB_resized-150px.jpg.webp"
+            alt="Pauline's Quilters World"
+            className="h-10 w-auto object-contain"
+          />
+        </div>
       </div>
 
       {/* Nav links */}

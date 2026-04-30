@@ -1,0 +1,17 @@
+{
+  "name": "PQW Stock Dashboard",
+  "short_name": "PQW Stock",
+  "description": "Pauline's Quilters World — stock management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1E1240",
+  "theme_color": "#1E1240",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/cropped-PQW-Logo-RGB_resized-150px.jpg.webp",
+      "sizes": "150x150",
+      "type": "image/webp"
+    }
+  ]
+}

@@ -54,7 +54,8 @@ function computeProduct(p) {
   const combined  = (p.woo_stock ?? 0) + (p.cutting_room_stock ?? 0);
   const threshold = p.low_stock_threshold ?? 5;
   const status    = combined === 0 ? 'out_of_stock' : combined <= threshold ? 'low_stock' : 'in_stock';
-  return { ...p, combined_stock: combined, status };
+  const needs_laser_cut = !p.hidden && (p.cutting_room_stock ?? 0) <= (p.cutting_room_minimum ?? 0);
+  return { ...p, combined_stock: combined, status, needs_laser_cut };
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ app.put('/api/products/:id', (req, res) => {
   // Prevent accidentally overwriting computed fields via PUT
   delete updated.combined_stock;
   delete updated.status;
+  delete updated.needs_laser_cut;
   products[idx] = updated;
   writeData('products', products);
   res.json(computeProduct(updated));
@@ -394,10 +396,12 @@ app.post('/api/sync', async (_req, res) => {
           woo_stock:         wooStock,
           cutting_room_stock: 0,
           low_stock_threshold: settings.default_threshold ?? 5,
+          cutting_room_minimum: settings.default_cutting_room_minimum ?? 0,
           last_synced_at:    syncedAt,
           updated_at:        syncedAt,
           flagged:           !sku,
           notes:             '',
+          hidden:            false,
         });
       }
     }

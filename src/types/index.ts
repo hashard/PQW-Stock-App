@@ -17,6 +17,9 @@ export interface Product {
   updated_at:          string;
   flagged:             boolean;
   notes:               string;
+  hidden:                boolean;
+  cutting_room_minimum:  number;
+  needs_laser_cut?:      boolean; // computed by server
 }
 
 export interface StockAdjustment {
@@ -38,6 +41,7 @@ export interface AppSettings {
   consumer_key:             string;
   consumer_secret:          string;
   default_threshold:        number;
+  default_cutting_room_minimum: number;
   auto_sync_interval:       number; // minutes; 0 = disabled
   sheets_enabled:           boolean;
   sheets_id:                string;

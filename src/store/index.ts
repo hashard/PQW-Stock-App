@@ -5,7 +5,7 @@ import type {
 
 const DEFAULT_SETTINGS: AppSettings = {
   woo_url: '', consumer_key: '', consumer_secret: '',
-  default_threshold: 5, auto_sync_interval: 0,
+  default_threshold: 5, default_cutting_room_minimum: 0, auto_sync_interval: 0,
   sheets_enabled: false, sheets_id: '', sheets_tab: 'Stock', sheets_credentials_json: '',
 };
 

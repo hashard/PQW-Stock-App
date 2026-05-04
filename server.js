@@ -483,7 +483,7 @@ function getSheetsClient(credentialsJson) {
 const SHEET_HEADERS = [
   'Product Name', 'SKU', 'Category',
   'Woo Stock', 'Cutting Room', 'Combined',
-  'Status', 'Threshold', 'Last Updated',
+  'Status', 'Threshold', 'Cutting Room Min', 'Hidden', 'Last Updated',
 ];
 
 async function pushAllToSheets(settings, products) {
@@ -497,7 +497,7 @@ async function pushAllToSheets(settings, products) {
   const rows = products.map(computeProduct).map(p => [
     p.name, p.sku, p.category,
     p.woo_stock, p.cutting_room_stock, p.combined_stock,
-    p.status, p.low_stock_threshold, now,
+    p.status, p.low_stock_threshold, p.cutting_room_minimum, p.hidden ? 'Yes' : 'No', now,
   ]);
 
   await sheets.spreadsheets.values.update({
@@ -545,7 +545,7 @@ app.post('/api/sheets/pull', async (_req, res) => {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: settings.sheets_id,
-      range: `${tabName}!A:I`,
+      range: `${tabName}!A:K`,
     });
 
     const rows = response.data.values;
@@ -554,16 +554,23 @@ app.post('/api/sheets/pull', async (_req, res) => {
     const headers    = rows[0];
     const skuCol     = headers.indexOf('SKU');
     const cuttingCol = headers.indexOf('Cutting Room');
+    const cuttingMinCol = headers.indexOf('Cutting Room Min');
 
     if (skuCol === -1 || cuttingCol === -1) {
       return res.status(400).json({ error: 'Sheet must have "SKU" and "Cutting Room" column headers in row 1.' });
     }
 
-    const sheetMap = new Map();
+    const sheetMap    = new Map();
+    const sheetMinMap = new Map();
     for (const row of rows.slice(1)) {
       const sku     = (row[skuCol] || '').trim();
       const cutting = parseInt(row[cuttingCol], 10);
       if (sku && !isNaN(cutting)) sheetMap.set(sku, cutting);
+
+      if (cuttingMinCol !== -1) {
+        const min = parseInt(row[cuttingMinCol], 10);
+        if (sku && !isNaN(min)) sheetMinMap.set(sku, min);
+      }
     }
 
     const products    = readData('products');
@@ -593,7 +600,8 @@ app.post('/api/sheets/pull', async (_req, res) => {
         created_at:      now,
       });
 
-      products[i] = { ...p, cutting_room_stock: newCutting, updated_at: now };
+      const newCuttingMin = sheetMinMap.has(p.sku) ? sheetMinMap.get(p.sku) : p.cutting_room_minimum;
+      products[i] = { ...p, cutting_room_stock: newCutting, cutting_room_minimum: newCuttingMin, updated_at: now };
       updated++;
     }
 
@@ -663,8 +671,8 @@ function toCSV(headers, rows) {
 app.get('/api/export/products', (_req, res) => {
   const products = readData('products').map(computeProduct);
   const csv = toCSV(
-    ['Name', 'SKU', 'Category', 'Woo Stock', 'Cutting Room', 'Combined', 'Status', 'Threshold', 'Last Synced'],
-    products.map(p => [p.name, p.sku, p.category, p.woo_stock, p.cutting_room_stock, p.combined_stock, p.status, p.low_stock_threshold, p.last_synced_at ?? '']),
+    ['Name', 'SKU', 'Category', 'Woo Stock', 'Cutting Room', 'Combined', 'Status', 'Threshold', 'Cutting Room Min', 'Hidden', 'Last Synced'],
+    products.map(p => [p.name, p.sku, p.category, p.woo_stock, p.cutting_room_stock, p.combined_stock, p.status, p.low_stock_threshold, p.cutting_room_minimum, p.hidden ? 'Yes' : 'No', p.last_synced_at ?? '']),
   );
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename=pqw-inventory.csv');

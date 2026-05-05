@@ -22,16 +22,17 @@ export function KPICards() {
     );
   }
 
-  const totalWoo      = products.reduce((s, p) => s + (p.woo_stock ?? 0), 0);
-  const totalCutting  = products.reduce((s, p) => s + (p.cutting_room_stock ?? 0), 0);
-  const totalCombined = products.reduce((s, p) => s + (p.combined_stock ?? 0), 0);
-  const lowCount      = products.filter(p => p.status === 'low_stock').length;
-  const outCount      = products.filter(p => p.status === 'out_of_stock').length;
+  const visible      = products.filter(p => !p.hidden);
+  const totalWoo      = visible.reduce((s, p) => s + (p.woo_stock ?? 0), 0);
+  const totalCutting  = visible.reduce((s, p) => s + (p.cutting_room_stock ?? 0), 0);
+  const totalCombined = visible.reduce((s, p) => s + (p.combined_stock ?? 0), 0);
+  const lowCount      = visible.filter(p => p.status === 'low_stock').length;
+  const outCount      = visible.filter(p => p.status === 'out_of_stock').length;
 
   const kpis: KPI[] = [
     {
       label: 'Total SKUs',
-      value: products.length.toLocaleString(),
+      value: visible.length.toLocaleString(),
       icon:  <Package className="h-5 w-5" />,
       color: 'text-brand-600 dark:text-brand-400',
       bg:    'bg-brand-50 dark:bg-brand-900/20',

@@ -54,7 +54,7 @@ function computeProduct(p) {
   const combined  = (p.woo_stock ?? 0) + (p.cutting_room_stock ?? 0);
   const threshold = p.low_stock_threshold ?? 5;
   const status    = combined === 0 ? 'out_of_stock' : combined <= threshold ? 'low_stock' : 'in_stock';
-  const needs_laser_cut = !p.hidden && (p.cutting_room_stock ?? 0) <= (p.cutting_room_minimum ?? 0);
+  const needs_laser_cut = !p.hidden && (p.cutting_room_minimum ?? 0) > 0 && (p.cutting_room_stock ?? 0) <= (p.cutting_room_minimum ?? 0);
   return { ...p, combined_stock: combined, status, needs_laser_cut };
 }
 

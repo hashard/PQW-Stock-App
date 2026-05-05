@@ -9,7 +9,7 @@ export function LowStockPanel() {
   const [collapsed, setCollapsed] = useState(false);
 
   const flagged = products
-    .filter(p => p.status === 'low_stock' || p.status === 'out_of_stock')
+    .filter(p => !p.hidden && (p.status === 'low_stock' || p.status === 'out_of_stock'))
     .sort((a, b) => a.combined_stock - b.combined_stock);
 
   if (flagged.length === 0) return null;

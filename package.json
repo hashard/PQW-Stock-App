@@ -57,7 +57,7 @@
     ],
     "win": {
       "target": "portable",
-      "icon": "public/icon-tray.png"
+      "icon": "public/icon-app.png"
     },
     "portable": {
       "artifactName": "PQW Stock.exe"

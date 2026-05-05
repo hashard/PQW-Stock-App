@@ -43,3 +43,12 @@ const trayResized = await sharp(src)
   .toBuffer();
 writeFileSync(iconTrayPath, trayResized);
 console.log('  ✓ icon-tray.png (32×32 tray icon)');
+
+// ── App icon (256×256 PNG for electron-builder) ─────────────────────
+const iconAppPath = fileURLToPath(new URL('../public/icon-app.png', import.meta.url));
+const appBuf = await sharp(src)
+  .resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .png()
+  .toBuffer();
+writeFileSync(iconAppPath, appBuf);
+console.log('  ✓ icon-app.png (256×256 app icon)');

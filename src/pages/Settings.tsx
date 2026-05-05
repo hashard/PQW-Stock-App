@@ -383,6 +383,12 @@ export function Settings() {
               className={`${inputCls} w-32`} />
           </Field>
 
+          <Field label="Default Cutting Room Minimum" hint="Applied to new products on first sync. When cutting room stock drops to or below this number, the product is flagged for laser cutting.">
+            <input type="number" min="0" value={form.default_cutting_room_minimum ?? 0}
+              onChange={e => update('default_cutting_room_minimum', Number(e.target.value))}
+              className={`${inputCls} w-32`} />
+          </Field>
+
           <Field label="Auto-Sync Interval (minutes)" hint="Set to 0 to disable. Recommended: 30 or 60.">
             <input type="number" min="0" value={form.auto_sync_interval}
               onChange={e => update('auto_sync_interval', Number(e.target.value))}

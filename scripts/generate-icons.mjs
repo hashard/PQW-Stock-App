@@ -4,6 +4,7 @@
 import sharp from 'sharp';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { writeFileSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = path.join(__dirname, '../public/cropped-PQW-Logo-RGB_resized-150px.jpg.webp');
@@ -33,3 +34,12 @@ async function makeIcon(size) {
 await makeIcon(192);
 await makeIcon(512);
 console.log('Icons generated in public/');
+
+// ── Tray icon (32x32 PNG for Electron system tray) ──────────────────
+const iconTrayPath = fileURLToPath(new URL('../public/icon-tray.png', import.meta.url));
+const trayResized = await sharp(src)
+  .resize(32, 32, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .png()
+  .toBuffer();
+writeFileSync(iconTrayPath, trayResized);
+console.log('  ✓ icon-tray.png (32×32 tray icon)');

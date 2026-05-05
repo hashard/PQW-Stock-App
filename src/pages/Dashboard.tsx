@@ -1,6 +1,7 @@
 import { useStore } from '../store';
 import { KPICards } from '../components/dashboard/KPICards';
 import { LowStockPanel } from '../components/dashboard/LowStockPanel';
+import { NeedsLaserCutPanel } from '../components/dashboard/NeedsLaserCutPanel';
 import { ProductTable } from '../components/products/ProductTable';
 import { AlertCircle } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export function Dashboard() {
       )}
 
       <KPICards />
+      <NeedsLaserCutPanel />
       <LowStockPanel />
 
       <div>

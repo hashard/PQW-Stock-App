@@ -53,10 +53,11 @@ User can enable/disable from the tray menu at any time.
 
 ## Packaging
 
-- **Tool:** `electron-builder`
-- **Output:** A single portable `.exe` (no installer), plus a `data/` folder for products.json, settings.json, adjustments.json
+- **Tool:** `electron-builder` with `portable` target
+- **Output:** A single `PQW Stock.exe` file — nothing else. Copy this one file to a USB drive or any folder and double-click to run
 - **Build command:** `npm run package` (added to package.json)
-- **Portable mode:** Data files live next to the exe in a `data/` directory, not in Electron's userData folder — so the exe is self-contained and relocatable
+- **Data storage:** On first launch the exe creates a `data/` folder next to itself containing `products.json`, `settings.json`, and `adjustments.json`. Everything is self-contained in one directory — move or delete the folder to remove completely
+- **Distribution:** Give someone the exe, they put it in a folder and run it. That's it
 
 ## Files Changed/Created
 

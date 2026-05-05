@@ -10,7 +10,7 @@
     "start": "node server.js",
     "preview": "vite preview",
     "electron": "electron .",
-    "package": "npm run build && electron-builder build --win portable"
+    "package": "npm run build && electron-builder build --win nsis"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -56,11 +56,15 @@
       "!node_modules/electron-builder"
     ],
     "win": {
-      "target": "portable",
+      "target": "nsis",
       "icon": "public/icon-app.png"
     },
-    "portable": {
-      "artifactName": "PQW Stock.exe"
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "PQW Stock Setup.exe",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

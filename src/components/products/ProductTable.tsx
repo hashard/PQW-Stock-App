@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown, Edit2, Eye, AlertTriangle,
-  Search, Filter, Download, Users, X,
+  Search, Filter, Download, Users, X, Scissors, EyeOff,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { StatusBadge } from '../ui/Badge';
@@ -32,10 +32,10 @@ function timeAgo(iso: string | null) {
 
 export function ProductTable() {
   const {
-    products, isLoading, filters, sort, page,
+    products, isLoading, filters, sort, page, showHidden,
     setFilters, setSort, setPage, openAdjustModal, openDrawer,
     isBulkMode, selectedIds, toggleSelectedId, clearSelected, toggleBulkMode,
-    updateProduct,
+    updateProduct, setShowHidden,
   } = useStore();
 
   const [bulkUser,   setBulkUser]   = useState('');
@@ -58,7 +58,15 @@ export function ProductTable() {
       const q = filters.search.toLowerCase();
       list = list.filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
     }
-    if (filters.status !== 'all') {
+    // Filter hidden products (unless showHidden is on)
+    if (!showHidden) {
+      list = list.filter(p => !p.hidden);
+    }
+
+    // Handle "laser_cut" as a status filter option
+    if (filters.status === 'laser_cut') {
+      list = list.filter(p => p.needs_laser_cut);
+    } else if (filters.status !== 'all') {
       list = list.filter(p => p.status === filters.status);
     }
     if (filters.category !== 'all') {
@@ -124,6 +132,8 @@ export function ProductTable() {
     </th>
   );
 
+  const colSpan = isBulkMode ? 11 : 10;
+
   return (
     <div className="flex flex-col gap-3">
 
@@ -153,6 +163,7 @@ export function ProductTable() {
             <option value="in_stock">In Stock</option>
             <option value="low_stock">Low Stock</option>
             <option value="out_of_stock">Out of Stock</option>
+            <option value="laser_cut">Laser Cut</option>
           </select>
         </div>
 
@@ -166,6 +177,15 @@ export function ProductTable() {
             <option key={c} value={c}>{c === 'all' ? 'All categories' : c}</option>
           ))}
         </select>
+
+        <Button
+          size="sm"
+          variant={showHidden ? 'primary' : 'secondary'}
+          onClick={() => setShowHidden(!showHidden)}
+          title={showHidden ? 'Hide hidden products' : 'Show hidden products'}
+        >
+          <EyeOff className="h-3.5 w-3.5" /> Hidden
+        </Button>
 
         <div className="flex items-center gap-2 ml-auto">
           {/* Result count */}
@@ -245,7 +265,7 @@ export function ProductTable() {
               : paged.length === 0
                 ? (
                   <tr>
-                    <td colSpan={isBulkMode ? 11 : 10} className="py-16 text-center text-sm text-slate-400">
+                    <td colSpan={colSpan} className="py-16 text-center text-sm text-slate-400">
                       {products.length === 0 ? 'No products yet — run a sync or add products.' : 'No products match your filters.'}
                     </td>
                   </tr>
@@ -256,6 +276,7 @@ export function ProductTable() {
                     className={[
                       'group transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
                       selectedIds.has(product.id) ? 'bg-brand-50 dark:bg-brand-900/20' : '',
+                      product.hidden ? 'opacity-50' : '',
                     ].join(' ')}
                   >
                     {isBulkMode && (
@@ -274,6 +295,11 @@ export function ProductTable() {
                         {product.flagged && (
                           <span title="Missing or duplicate SKU — review needed">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          </span>
+                        )}
+                        {product.needs_laser_cut && (
+                          <span title="Needs laser cutting — cutting room stock at or below minimum">
+                            <Scissors className="h-3.5 w-3.5 shrink-0 text-red-500" />
                           </span>
                         )}
                         <span className="font-medium text-slate-800 dark:text-slate-100 line-clamp-1">{product.name}</span>
@@ -320,14 +346,28 @@ export function ProductTable() {
 
                     {/* Actions */}
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="xs" variant="ghost" onClick={() => openAdjustModal(product.id)} title="Adjust stock">
-                          <Edit2 className="h-3.5 w-3.5" />
+                      {product.hidden ? (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={async () => {
+                            const updated = await api.products.update(product.id, { hidden: false } as Partial<Product>);
+                            updateProduct(updated);
+                          }}
+                          title="Unhide product"
+                        >
+                          <EyeOff className="h-3.5 w-3.5" /> Unhide
                         </Button>
-                        <Button size="xs" variant="ghost" onClick={() => openDrawer(product.id)} title="View details">
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="xs" variant="ghost" onClick={() => openAdjustModal(product.id)} title="Adjust stock">
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="xs" variant="ghost" onClick={() => openDrawer(product.id)} title="View details">
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -31,9 +31,10 @@ interface Store {
   selectedIds:         Set<string>;
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  filters:  FilterConfig;
-  sort:     SortConfig;
-  page:     number;
+  filters:     FilterConfig;
+  sort:        SortConfig;
+  page:        number;
+  showHidden:  boolean;
 
   // ── Data actions ──────────────────────────────────────────────────────────
   setProducts:    (p: Product[]) => void;
@@ -57,9 +58,10 @@ interface Store {
   clearSelected:     () => void;
 
   // ── Table actions ─────────────────────────────────────────────────────────
-  setFilters: (f: Partial<FilterConfig>) => void;
-  setSort:    (s: SortConfig)            => void;
-  setPage:    (p: number)               => void;
+  setFilters:      (f: Partial<FilterConfig>) => void;
+  setSort:         (s: SortConfig)            => void;
+  setPage:         (p: number)                => void;
+  setShowHidden:   (v: boolean)               => void;
 }
 
 const storedDark = localStorage.getItem('pqw_dark') === 'true';
@@ -82,6 +84,7 @@ export const useStore = create<Store>((set) => ({
   filters: { search: '', status: 'all', category: 'all' },
   sort:    { key: 'name', direction: 'asc' },
   page:    0,
+  showHidden: false,
 
   setProducts:    (products)    => set({ products }),
   updateProduct:  (product)     => set(s => ({ products: s.products.map(p => p.id === product.id ? product : p) })),
@@ -112,5 +115,6 @@ export const useStore = create<Store>((set) => ({
 
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f }, page: 0 })),
   setSort:    (sort) => set({ sort }),
-  setPage:    (page) => set({ page }),
+  setPage:         (page) => set({ page }),
+  setShowHidden:   (showHidden) => set({ showHidden }),
 }));

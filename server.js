@@ -584,23 +584,29 @@ app.post('/api/sheets/pull', async (_req, res) => {
 
       const newCutting = sheetMap.get(p.sku);
       const previous   = p.cutting_room_stock ?? 0;
-      if (newCutting === previous) continue;
+      const stockChanged = newCutting !== previous;
 
-      adjustments.push({
-        id:              uid(),
-        product_id:      p.id,
-        sku:             p.sku,
-        product_name:    p.name,
-        adjustment_type: 'sheet_import',
-        quantity_change: newCutting - previous,
-        previous_stock:  previous,
-        new_stock:       newCutting,
-        reason:          'Imported from Google Sheet',
-        user_name:       'Sheet Import',
-        created_at:      now,
-      });
+      const newCuttingMin = sheetMinMap.has(p.sku) ? sheetMinMap.get(p.sku) : (p.cutting_room_minimum ?? 0);
+      const minChanged = sheetMinMap.has(p.sku) && newCuttingMin !== (p.cutting_room_minimum ?? 0);
 
-      const newCuttingMin = sheetMinMap.has(p.sku) ? sheetMinMap.get(p.sku) : p.cutting_room_minimum;
+      if (!stockChanged && !minChanged) continue;
+
+      if (stockChanged) {
+        adjustments.push({
+          id:              uid(),
+          product_id:      p.id,
+          sku:             p.sku,
+          product_name:    p.name,
+          adjustment_type: 'sheet_import',
+          quantity_change: newCutting - previous,
+          previous_stock:  previous,
+          new_stock:       newCutting,
+          reason:          'Imported from Google Sheet',
+          user_name:       'Sheet Import',
+          created_at:      now,
+        });
+      }
+
       products[i] = { ...p, cutting_room_stock: newCutting, cutting_room_minimum: newCuttingMin, updated_at: now };
       updated++;
     }

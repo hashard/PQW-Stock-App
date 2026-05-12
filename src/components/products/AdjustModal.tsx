@@ -152,14 +152,13 @@ export function AdjustModal() {
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 space-y-1">
               <p className="font-semibold">Moves stock from cutting room → WooCommerce</p>
               <p>Cutting room decreases · WooCommerce increases · Combined total stays the same.</p>
-              {noWooId && <p className="font-semibold text-amber-600 dark:text-amber-400">⚠ No WooCommerce ID — run a sync first.</p>}
+              <p>Updates local values only — use <strong>Push Woo</strong> in Settings to sync to the live store.</p>
             </div>
           )}
           {mode === 'woo' && (
             <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-xs text-violet-700 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-300 space-y-1">
-              <p className="font-semibold">Edits WooCommerce stock directly via API</p>
-              <p>Updates the live store immediately. Use for corrections or manual overrides.</p>
-              {noWooId && <p className="font-semibold text-amber-600 dark:text-amber-400">⚠ No WooCommerce ID — run a sync first.</p>}
+              <p className="font-semibold">Edits WooCommerce stock value</p>
+              <p>Updates local values only — use <strong>Push Woo</strong> in Settings to sync changes to the live store.</p>
             </div>
           )}
 
@@ -264,7 +263,7 @@ export function AdjustModal() {
             <Button type="button" variant="secondary" className="flex-1" onClick={handleClose}>Cancel</Button>
             <Button
               type="submit" variant="primary" className="flex-1" loading={loading}
-              disabled={(mode === 'transfer' || mode === 'woo') && noWooId}
+              disabled={false}
             >
               {mode === 'transfer' ? <><ArrowRightLeft className="h-4 w-4" /> Move to WooCommerce</> :
                mode === 'woo'      ? <><ShoppingCart   className="h-4 w-4" /> Update Woo Stock</> :

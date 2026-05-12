@@ -145,8 +145,8 @@ app.put('/api/settings', (req, res) => {
   res.json(settings);
 });
 
-// ── Edit WooCommerce Stock Directly ──────────────────────────────────────────
-app.post('/api/woo-stock', async (req, res) => {
+// ── Edit WooCommerce Stock (local only — push via /api/push-woo) ─────────────
+app.post('/api/woo-stock', (req, res) => {
   const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
 
   if (!product_id || !adjustment_type || quantity === undefined || !reason?.trim() || !user_name?.trim()) {
@@ -164,43 +164,12 @@ app.post('/api/woo-stock', async (req, res) => {
 
   const product = products[idx];
 
-  if (!product.woo_product_id) {
-    return res.status(400).json({ error: 'This product has no WooCommerce ID — sync first.' });
-  }
-
-  const settings = readData('settings');
-  const { woo_url, consumer_key, consumer_secret } = settings;
-  if (!woo_url || !consumer_key || !consumer_secret) {
-    return res.status(400).json({ error: 'WooCommerce credentials not configured. Go to Settings first.' });
-  }
-
   const previousWoo = product.woo_stock ?? 0;
   let newWooStock;
-  if (adjustment_type === 'add')    newWooStock = previousWoo + qty;
+  if (adjustment_type === 'add')         newWooStock = previousWoo + qty;
   else if (adjustment_type === 'remove') newWooStock = Math.max(0, previousWoo - qty);
   else if (adjustment_type === 'set')    newWooStock = qty;
   else return res.status(400).json({ error: 'Invalid adjustment_type.' });
-
-  const base = woo_url.replace(/\/$/, '');
-  const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
-
-  try {
-    const wooRes = await fetch(`${base}/wp-json/wc/v3/products/${product.woo_product_id}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ stock_quantity: newWooStock, manage_stock: true }),
-    });
-
-    if (!wooRes.ok) {
-      const body = await wooRes.text();
-      throw new Error(`WooCommerce API error ${wooRes.status}: ${body}`);
-    }
-  } catch (err) {
-    return res.status(500).json({ error: `Failed to update WooCommerce: ${err.message}` });
-  }
 
   const now = new Date().toISOString();
   const adjustment = {
@@ -228,8 +197,8 @@ app.post('/api/woo-stock', async (req, res) => {
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
-// ── Transfer: Cutting Room → WooCommerce ─────────────────────────────────────
-app.post('/api/transfer', async (req, res) => {
+// ── Transfer: Cutting Room → WooCommerce (local only — push via /api/push-woo)
+app.post('/api/transfer', (req, res) => {
   const { product_id, quantity, reason, user_name } = req.body;
 
   if (!product_id || !quantity || !reason?.trim() || !user_name?.trim()) {
@@ -247,45 +216,14 @@ app.post('/api/transfer', async (req, res) => {
 
   const product = products[idx];
 
-  if (!product.woo_product_id) {
-    return res.status(400).json({ error: 'This product has no WooCommerce ID — sync first.' });
-  }
-
   const cuttingStock = product.cutting_room_stock ?? 0;
   if (qty > cuttingStock) {
     return res.status(400).json({ error: `Not enough cutting room stock. Available: ${cuttingStock}` });
   }
 
-  // Push new stock level to WooCommerce
-  const settings = readData('settings');
-  const { woo_url, consumer_key, consumer_secret } = settings;
-  if (!woo_url || !consumer_key || !consumer_secret) {
-    return res.status(400).json({ error: 'WooCommerce credentials not configured. Go to Settings first.' });
-  }
-
-  const base = woo_url.replace(/\/$/, '');
-  const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
   const newWooStock = (product.woo_stock ?? 0) + qty;
 
-  try {
-    const wooRes = await fetch(`${base}/wp-json/wc/v3/products/${product.woo_product_id}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ stock_quantity: newWooStock, manage_stock: true }),
-    });
-
-    if (!wooRes.ok) {
-      const body = await wooRes.text();
-      throw new Error(`WooCommerce API error ${wooRes.status}: ${body}`);
-    }
-  } catch (err) {
-    return res.status(500).json({ error: `Failed to update WooCommerce: ${err.message}` });
-  }
-
-  // Update local data
+  // Update local data only
   const previousCutting = cuttingStock;
   const newCutting = cuttingStock - qty;
   const now = new Date().toISOString();
@@ -331,87 +269,143 @@ async function fetchAllWooProducts(settings) {
   const base = woo_url.replace(/\/$/, '');
   const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
 
-  let all = [];
-  let page = 1;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const url = `${base}/wp-json/wc/v3/products?per_page=100&page=${page}&status=publish`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Basic ${auth}` },
-    });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`WooCommerce API error ${res.status}: ${body}`);
+  // Helper: paginate any WooCommerce list endpoint
+  async function paginate(endpoint) {
+    let all = [], page = 1;
+    while (true) {
+      const res = await fetch(`${base}${endpoint}&page=${page}`, {
+        headers: { Authorization: `Basic ${auth}` },
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`WooCommerce API error ${res.status}: ${body}`);
+      }
+      const batch = await res.json();
+      if (!batch.length) break;
+      all = all.concat(batch);
+      if (batch.length < 100) break;
+      page++;
     }
-
-    const batch = await res.json();
-    if (!batch.length) break;
-    all = all.concat(batch);
-    if (batch.length < 100) break;
-    page++;
+    return all;
   }
 
-  return all;
+  // Fetch top-level products (simple + variable parents)
+  const allProducts = await paginate('/wp-json/wc/v3/products?per_page=100&status=publish');
+
+  // Separate simple products from variable parents
+  const simpleProducts = allProducts.filter(p => p.type !== 'variable');
+  const variableParents = allProducts.filter(p => p.type === 'variable');
+
+  // Fetch variations for each variable parent
+  const variationItems = [];
+  for (const parent of variableParents) {
+    try {
+      const vars = await paginate(`/wp-json/wc/v3/products/${parent.id}/variations?per_page=100`);
+      for (const v of vars) {
+        variationItems.push({
+          ...v,
+          _parentId:       parent.id,
+          _parentName:     parent.name,
+          _parentCategory: parent.categories?.[0]?.name ?? 'Uncategorized',
+        });
+      }
+    } catch (e) {
+      console.warn(`Could not fetch variations for product ${parent.id}: ${e.message}`);
+    }
+  }
+
+  return { simpleProducts, variationItems };
 }
 
 app.post('/api/sync', async (_req, res) => {
   try {
-    const settings = readData('settings');
-    const wooItems = await fetchAllWooProducts(settings);
-    const existing = readData('products');
-    const bySkuMap = new Map(existing.map(p => [p.sku, p]));
-    const syncedAt = new Date().toISOString();
+    const settings   = readData('settings');
+    const { simpleProducts, variationItems } = await fetchAllWooProducts(settings);
+    const existing   = readData('products');
+    const bySkuMap   = new Map(existing.map(p => [p.sku, p]));
+    const syncedAt   = new Date().toISOString();
 
-    for (const wp of wooItems) {
-      const sku      = (wp.sku || '').trim();
-      const category = wp.categories?.[0]?.name ?? 'Uncategorized';
-      const wooStock = wp.manage_stock
-        ? (wp.stock_quantity ?? 0)
-        : (wp.stock_status === 'instock' ? 999 : 0);
-
-      const key = sku || `__woo_${wp.id}`;
-
+    // Helper: upsert one item into the map
+    function upsert({ id, variationId, name, sku, category, wooStock, flagged }) {
+      const key = sku || `__woo_${variationId ?? id}`;
       if (bySkuMap.has(key)) {
         const prev = bySkuMap.get(key);
         bySkuMap.set(key, {
           ...prev,
-          woo_product_id: wp.id,
-          name:           wp.name,
-          sku:            sku || prev.sku,
+          woo_product_id:    id,
+          woo_variation_id:  variationId ?? prev.woo_variation_id ?? null,
+          name,
+          sku:               sku || prev.sku,
           category,
-          woo_stock:      wooStock,
-          last_synced_at: syncedAt,
-          updated_at:     syncedAt,
-          flagged:        !sku,
+          woo_stock:         wooStock,
+          last_synced_at:    syncedAt,
+          updated_at:        syncedAt,
+          flagged,
         });
       } else {
         bySkuMap.set(key, {
-          id:                uid(),
-          woo_product_id:    wp.id,
-          name:              wp.name,
-          sku:               sku || `NO-SKU-${wp.id}`,
+          id:                   uid(),
+          woo_product_id:       id,
+          woo_variation_id:     variationId ?? null,
+          name,
+          sku:                  sku || `NO-SKU-${variationId ?? id}`,
           category,
-          woo_stock:         wooStock,
-          cutting_room_stock: 0,
-          low_stock_threshold: settings.default_threshold ?? 5,
+          woo_stock:            wooStock,
+          cutting_room_stock:   0,
+          low_stock_threshold:  settings.default_threshold ?? 5,
           cutting_room_minimum: settings.default_cutting_room_minimum ?? 0,
-          last_synced_at:    syncedAt,
-          updated_at:        syncedAt,
-          flagged:           !sku,
-          notes:             '',
-          hidden:            false,
+          last_synced_at:       syncedAt,
+          updated_at:           syncedAt,
+          flagged,
+          notes:                '',
+          hidden:               false,
         });
       }
+    }
+
+    // Process simple products
+    for (const wp of simpleProducts) {
+      const sku      = (wp.sku || '').trim();
+      const wooStock = wp.manage_stock
+        ? (wp.stock_quantity ?? 0)
+        : (wp.stock_status === 'instock' ? 999 : 0);
+      upsert({
+        id:       wp.id,
+        name:     wp.name,
+        sku,
+        category: wp.categories?.[0]?.name ?? 'Uncategorized',
+        wooStock,
+        flagged:  !sku,
+      });
+    }
+
+    // Process variations — name includes the attribute options (e.g. "Red - Large")
+    for (const v of variationItems) {
+      const sku      = (v.sku || '').trim();
+      const wooStock = v.manage_stock
+        ? (v.stock_quantity ?? 0)
+        : (v.stock_status === 'instock' ? 999 : 0);
+      const attrStr  = v.attributes?.length
+        ? v.attributes.map(a => a.option).join(' / ')
+        : `Variation ${v.id}`;
+      upsert({
+        id:          v._parentId,
+        variationId: v.id,
+        name:        `${v._parentName} — ${attrStr}`,
+        sku,
+        category:    v._parentCategory,
+        wooStock,
+        flagged:     !sku,
+      });
     }
 
     const finalProducts = Array.from(bySkuMap.values());
     writeData('products', finalProducts);
 
+    const totalSynced = simpleProducts.length + variationItems.length;
     res.json({
       products:     finalProducts.map(computeProduct),
-      synced_count: wooItems.length,
+      synced_count: totalSynced,
       synced_at:    syncedAt,
     });
   } catch (err) {
@@ -442,7 +436,12 @@ app.post('/api/push-woo', async (_req, res) => {
 
     for (const product of pushable) {
       try {
-        const wooRes = await fetch(`${base}/wp-json/wc/v3/products/${product.woo_product_id}`, {
+        // Variations use a different endpoint than simple products
+        const endpoint = product.woo_variation_id
+          ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+          : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+
+        const wooRes = await fetch(endpoint, {
           method: 'PUT',
           headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ stock_quantity: product.woo_stock ?? 0, manage_stock: true }),

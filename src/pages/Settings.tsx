@@ -8,6 +8,7 @@ import { useStore } from '../store';
 import { api } from '../api/client';
 import { useSync } from '../hooks/useSync';
 import { Button } from '../components/ui/Button';
+import { Toggle } from '../components/ui/Toggle';
 
 export function Settings() {
   const { settings, setSettings, syncStatus, sheetsStatus, setSheetsStatus, setProducts, setAdjustments } = useStore();
@@ -371,6 +372,27 @@ export function Settings() {
               </Button>
             </>
           )}
+        </section>
+
+        {/* ── Stock Adjustment Behaviour ─────────────────────────────────── */}
+        <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-4">
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Stock Adjustment Behaviour</h2>
+
+          <Toggle
+            checked={!!form.woo_push_instant}
+            onChange={v => update('woo_push_instant', v)}
+            label="Push Woo changes instantly"
+            description="When on, editing Woo Stock or moving stock to Woo updates the live store immediately. When off, changes are saved locally and pushed only when you use Push Woo."
+          />
+
+          <div className="border-t border-slate-100 dark:border-slate-700" />
+
+          <Toggle
+            checked={form.require_reason !== false}
+            onChange={v => update('require_reason', v)}
+            label="Require reason on adjustments"
+            description="When on, staff must enter a reason before saving any stock change."
+          />
         </section>
 
         {/* ── Defaults ───────────────────────────────────────────────────── */}

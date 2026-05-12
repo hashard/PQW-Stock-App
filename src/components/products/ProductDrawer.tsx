@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, AlertTriangle, Clock, Edit2, Save, EyeOff } from 'lucide-react';
+import { X, AlertTriangle, Clock, Edit2, Save } from 'lucide-react';
 import { useStore } from '../../store';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { Toggle } from '../ui/Toggle';
 import { api } from '../../api/client';
 
 function timeAgo(iso: string | null) {
@@ -221,23 +222,15 @@ export function ProductDrawer() {
           </div>
 
           {/* Hide / Unhide */}
-          <div>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Stock Management</h3>
-            <button
-              onClick={toggleHidden}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-700 p-3">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Visibility</h3>
+            <Toggle
+              checked={!product.hidden}
+              onChange={() => toggleHidden()}
               disabled={saving}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                product.hidden
-                  ? 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-800'
-                  : 'border-brand-300 text-brand-700 bg-brand-50 hover:bg-brand-100 dark:border-brand-700 dark:text-brand-300 dark:bg-brand-900/20'
-              }`}
-            >
-              <EyeOff className="h-4 w-4" />
-              {product.hidden ? 'Hidden from dashboard' : 'Visible on dashboard'}
-            </button>
-            <p className="mt-1 text-xs text-slate-400">
-              {product.hidden ? 'This product does not appear in the main product list.' : 'Toggle to hide this product from the dashboard.'}
-            </p>
+              label={product.hidden ? 'Hidden from dashboard' : 'Visible on dashboard'}
+              description="Hidden products don't appear in the main list. Use for discontinued or irrelevant items."
+            />
           </div>
 
           {/* Recent adjustments */}

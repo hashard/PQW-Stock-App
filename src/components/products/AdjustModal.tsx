@@ -10,8 +10,9 @@ type Mode = 'adjust' | 'transfer' | 'woo';
 type SubType = 'add' | 'remove' | 'set';
 
 export function AdjustModal() {
-  const { adjustProductId, products, closeAdjustModal, updateProduct, addAdjustment } = useStore();
+  const { adjustProductId, products, settings, closeAdjustModal, updateProduct, addAdjustment } = useStore();
   const product = products.find(p => p.id === adjustProductId);
+  const requireReason = settings.require_reason !== false;
 
   const [mode, setMode]       = useState<Mode>('adjust');
   const [type, setType]       = useState<SubType>('add');
@@ -35,8 +36,8 @@ export function AdjustModal() {
 
     const quantity = Number(qty);
     if (!qty || isNaN(quantity) || quantity < 0) { setErr('Enter a valid quantity (≥ 0).'); return; }
-    if (!reason.trim()) { setErr('Reason is required.'); return; }
-    if (!user.trim())   { setErr('Staff name is required.'); return; }
+    if (requireReason && !reason.trim()) { setErr('Reason is required.'); return; }
+    if (!user.trim()) { setErr('Staff name is required.'); return; }
 
     if (mode === 'transfer' && quantity > (product?.cutting_room_stock ?? 0)) {
       setErr(`Not enough cutting room stock. Available: ${product?.cutting_room_stock ?? 0}`);
@@ -243,7 +244,9 @@ export function AdjustModal() {
 
           {/* Reason */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">Reason / Note <span className="text-red-500">*</span></label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-700 dark:text-slate-300">
+              Reason / Note {requireReason ? <span className="text-red-500">*</span> : <span className="text-slate-400">(optional)</span>}
+            </label>
             <textarea
               rows={2} value={reason} onChange={e => setReason(e.target.value)}
               placeholder={

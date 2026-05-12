@@ -47,6 +47,8 @@ export interface AppSettings {
   sheets_id:                string;
   sheets_tab:               string;
   sheets_credentials_json:  string;
+  woo_push_instant:         boolean; // push woo changes live immediately vs. batch via Push Woo
+  require_reason:           boolean; // require a reason on every stock adjustment
 }
 
 export interface SyncStatus {

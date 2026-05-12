@@ -35,6 +35,8 @@ const DEFAULTS = {
     sheets_id: '',
     sheets_tab: 'Stock',
     sheets_credentials_json: '',
+    woo_push_instant: false,
+    require_reason: true,
   },
 };
 
@@ -91,9 +93,13 @@ app.get('/api/adjustments', (_req, res) => {
 
 app.post('/api/adjustments', (req, res) => {
   const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
+  const settings = readData('settings');
 
-  if (!product_id || !adjustment_type || quantity === undefined || !reason?.trim() || !user_name?.trim()) {
+  if (!product_id || !adjustment_type || quantity === undefined || !user_name?.trim()) {
     return res.status(400).json({ error: 'All fields are required.' });
+  }
+  if (settings.require_reason !== false && !reason?.trim()) {
+    return res.status(400).json({ error: 'Reason is required.' });
   }
 
   const products = readData('products');
@@ -145,12 +151,17 @@ app.put('/api/settings', (req, res) => {
   res.json(settings);
 });
 
-// ── Edit WooCommerce Stock (local only — push via /api/push-woo) ─────────────
-app.post('/api/woo-stock', (req, res) => {
+// ── Edit WooCommerce Stock ────────────────────────────────────────────────────
+// Pushes live immediately if settings.woo_push_instant is true, otherwise local only.
+app.post('/api/woo-stock', async (req, res) => {
   const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
+  const settings = readData('settings');
 
-  if (!product_id || !adjustment_type || quantity === undefined || !reason?.trim() || !user_name?.trim()) {
+  if (!product_id || !adjustment_type || quantity === undefined || !user_name?.trim()) {
     return res.status(400).json({ error: 'All fields are required.' });
+  }
+  if (settings.require_reason !== false && !reason?.trim()) {
+    return res.status(400).json({ error: 'Reason is required.' });
   }
 
   const qty = Number(quantity);
@@ -171,6 +182,31 @@ app.post('/api/woo-stock', (req, res) => {
   else if (adjustment_type === 'set')    newWooStock = qty;
   else return res.status(400).json({ error: 'Invalid adjustment_type.' });
 
+  // Optionally push live to WooCommerce immediately
+  if (settings.woo_push_instant && product.woo_product_id) {
+    const { woo_url, consumer_key, consumer_secret } = settings;
+    if (woo_url && consumer_key && consumer_secret) {
+      const base = woo_url.replace(/\/$/, '');
+      const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+      const endpoint = product.woo_variation_id
+        ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+        : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+      try {
+        const wooRes = await fetch(endpoint, {
+          method: 'PUT',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock_quantity: newWooStock, manage_stock: true }),
+        });
+        if (!wooRes.ok) {
+          const body = await wooRes.text();
+          return res.status(500).json({ error: `WooCommerce API error ${wooRes.status}: ${body}` });
+        }
+      } catch (err) {
+        return res.status(500).json({ error: `Failed to update WooCommerce: ${err.message}` });
+      }
+    }
+  }
+
   const now = new Date().toISOString();
   const adjustment = {
     id:              uid(),
@@ -181,7 +217,7 @@ app.post('/api/woo-stock', (req, res) => {
     quantity_change: newWooStock - previousWoo,
     previous_stock:  previousWoo,
     new_stock:       newWooStock,
-    reason:          reason.trim(),
+    reason:          (reason ?? '').trim(),
     user_name:       user_name.trim(),
     created_at:      now,
   };
@@ -197,12 +233,17 @@ app.post('/api/woo-stock', (req, res) => {
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
-// ── Transfer: Cutting Room → WooCommerce (local only — push via /api/push-woo)
-app.post('/api/transfer', (req, res) => {
+// ── Transfer: Cutting Room → WooCommerce ─────────────────────────────────────
+// Pushes live immediately if settings.woo_push_instant is true, otherwise local only.
+app.post('/api/transfer', async (req, res) => {
   const { product_id, quantity, reason, user_name } = req.body;
+  const settings = readData('settings');
 
-  if (!product_id || !quantity || !reason?.trim() || !user_name?.trim()) {
+  if (!product_id || !quantity || !user_name?.trim()) {
     return res.status(400).json({ error: 'All fields are required.' });
+  }
+  if (settings.require_reason !== false && !reason?.trim()) {
+    return res.status(400).json({ error: 'Reason is required.' });
   }
 
   const qty = Number(quantity);
@@ -223,7 +264,32 @@ app.post('/api/transfer', (req, res) => {
 
   const newWooStock = (product.woo_stock ?? 0) + qty;
 
-  // Update local data only
+  // Optionally push live to WooCommerce immediately
+  if (settings.woo_push_instant && product.woo_product_id) {
+    const { woo_url, consumer_key, consumer_secret } = settings;
+    if (woo_url && consumer_key && consumer_secret) {
+      const base = woo_url.replace(/\/$/, '');
+      const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+      const endpoint = product.woo_variation_id
+        ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+        : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+      try {
+        const wooRes = await fetch(endpoint, {
+          method: 'PUT',
+          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stock_quantity: newWooStock, manage_stock: true }),
+        });
+        if (!wooRes.ok) {
+          const body = await wooRes.text();
+          return res.status(500).json({ error: `WooCommerce API error ${wooRes.status}: ${body}` });
+        }
+      } catch (err) {
+        return res.status(500).json({ error: `Failed to update WooCommerce: ${err.message}` });
+      }
+    }
+  }
+
+  // Update local data
   const previousCutting = cuttingStock;
   const newCutting = cuttingStock - qty;
   const now = new Date().toISOString();

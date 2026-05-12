@@ -761,6 +761,24 @@ app.get('/api/export/adjustments', (_req, res) => {
   res.send(csv);
 });
 
+// ── Version info ─────────────────────────────────────────────────────────────
+import { execSync } from 'child_process';
+
+function getVersion() {
+  try {
+    const hash    = execSync('git rev-parse --short HEAD',  { cwd: __dirname }).toString().trim();
+    const date    = execSync('git log -1 --format=%cd --date=short', { cwd: __dirname }).toString().trim();
+    const subject = execSync('git log -1 --format=%s',     { cwd: __dirname }).toString().trim();
+    return { hash, date, subject };
+  } catch {
+    return { hash: 'unknown', date: 'unknown', subject: 'Git not available' };
+  }
+}
+
+app.get('/api/version', (_req, res) => {
+  res.json(getVersion());
+});
+
 // ── Local network URL (for QR code) ──────────────────────────────────────────
 app.get('/api/local-url', (_req, res) => {
   let localIp = 'localhost';

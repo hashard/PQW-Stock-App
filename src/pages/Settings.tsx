@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Save, Eye, EyeOff, CheckCircle, AlertCircle, Sheet, ExternalLink,
-  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2, Smartphone, Copy,
+  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2, Smartphone, Copy, GitBranch,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../store';
@@ -27,11 +27,13 @@ export function Settings() {
   const [sheetsTestResult, setSheetsTestResult]   = useState<{ ok: boolean; message: string } | null>(null);
   const [localUrl, setLocalUrl]                   = useState('');
   const [urlCopied, setUrlCopied]                 = useState(false);
+  const [version, setVersion]                     = useState<{ hash: string; date: string; subject: string } | null>(null);
 
   useEffect(() => { setForm(settings); }, [settings]);
 
   useEffect(() => {
     api.localUrl().then(r => setLocalUrl(r.url)).catch(() => {});
+    api.version().then(setVersion).catch(() => {});
   }, []);
 
   const sheetsEnabled = settings.sheets_enabled && settings.sheets_id && settings.sheets_credentials_json;
@@ -433,6 +435,38 @@ export function Settings() {
           <Save className="h-4 w-4" /> Save Settings
         </Button>
       </form>
+
+      {/* ── Version / Update ─────────────────────────────────────────────── */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-3">
+        <div className="flex items-center gap-2">
+          <GitBranch className="h-4 w-4 text-slate-400" />
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Version &amp; Updates</h2>
+        </div>
+
+        {version ? (
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-900 px-4 py-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <code className="text-xs font-mono font-bold text-brand-600 dark:text-brand-400">{version.hash}</code>
+              <span className="text-xs text-slate-400">{version.date}</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 truncate">{version.subject}</p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading version…
+          </div>
+        )}
+
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 py-3 space-y-1.5">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">To update this installation:</p>
+          <ol className="text-xs text-slate-500 dark:text-slate-400 space-y-1 list-decimal list-inside">
+            <li>Close the server (Ctrl + C in the PowerShell window)</li>
+            <li>Double-click <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">update.bat</code> in the Stock folder</li>
+            <li>It will pull the latest code, install packages, and rebuild automatically</li>
+            <li>Your data is never affected — it lives in the <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">data/</code> folder which is never touched by updates</li>
+          </ol>
+        </div>
+      </section>
     </div>
   );
 }

@@ -76,4 +76,5 @@ export const api = {
     test: () => req<{ ok: boolean; title: string }>('/sheets/test', { method: 'POST' }),
   },
   localUrl: () => req<{ url: string }>('/local-url'),
+  version:  () => req<{ hash: string; date: string; subject: string }>('/version'),
 };

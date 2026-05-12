@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
 
@@ -762,7 +763,6 @@ app.get('/api/export/adjustments', (_req, res) => {
 });
 
 // ── Version info ─────────────────────────────────────────────────────────────
-import { execSync } from 'child_process';
 
 function getVersion() {
   try {
@@ -777,6 +777,47 @@ function getVersion() {
 
 app.get('/api/version', (_req, res) => {
   res.json(getVersion());
+});
+
+// ── In-app updater (SSE stream) ───────────────────────────────────────────────
+app.get('/api/update', (_req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const send = (type, text) =>
+    res.write(`data: ${JSON.stringify({ type, text })}\n\n`);
+
+  function runCmd(label, cmd, args) {
+    return new Promise((resolve, reject) => {
+      send('step', label);
+      const proc = spawn(cmd, args, { cwd: __dirname, shell: true, windowsHide: true });
+      proc.stdout.on('data', d =>
+        d.toString().split('\n').forEach(l => { if (l.trim()) send('out', l.trimEnd()); })
+      );
+      proc.stderr.on('data', d =>
+        d.toString().split('\n').forEach(l => { if (l.trim()) send('out', l.trimEnd()); })
+      );
+      proc.on('close', code =>
+        code === 0 ? resolve() : reject(new Error(`"${label}" failed (exit code ${code})`))
+      );
+    });
+  }
+
+  (async () => {
+    try {
+      await runCmd('Pulling latest changes from GitHub…', 'git', ['pull']);
+      await runCmd('Installing packages…',               'npm', ['install']);
+      await runCmd('Building the app…',                  'npm', ['run', 'build']);
+      send('done', 'Update complete — restarting server…');
+      // Give the SSE message time to reach the browser before restart
+      setTimeout(() => process.exit(0), 800);
+    } catch (err) {
+      send('error', err.message);
+      res.end();
+    }
+  })();
 });
 
 // ── Local network URL (for QR code) ──────────────────────────────────────────

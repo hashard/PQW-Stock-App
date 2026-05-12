@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Save, Eye, EyeOff, CheckCircle, AlertCircle, Sheet, ExternalLink,
-  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2, Smartphone, Copy, GitBranch,
+  ArrowDownToLine, ArrowUpFromLine, Upload, Download, Loader2, Smartphone, Copy, GitBranch, RefreshCw,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useStore } from '../store';
@@ -28,6 +28,11 @@ export function Settings() {
   const [localUrl, setLocalUrl]                   = useState('');
   const [urlCopied, setUrlCopied]                 = useState(false);
   const [version, setVersion]                     = useState<{ hash: string; date: string; subject: string } | null>(null);
+
+  type UpdateState = 'idle' | 'running' | 'done' | 'error';
+  const [updateState, setUpdateState]   = useState<UpdateState>('idle');
+  const [updateLines, setUpdateLines]   = useState<{ type: string; text: string }[]>([]);
+  const terminalRef                     = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setForm(settings); }, [settings]);
 
@@ -102,6 +107,46 @@ export function Settings() {
     } finally {
       setTestingSheets(false);
     }
+  }
+
+  function runUpdate() {
+    if (!confirm('This will pull the latest code, rebuild, and restart the server. Your data is never affected. Continue?')) return;
+    setUpdateState('running');
+    setUpdateLines([]);
+
+    const es = new EventSource('/api/update');
+
+    es.onmessage = (e) => {
+      const msg = JSON.parse(e.data) as { type: string; text: string };
+      setUpdateLines(prev => [...prev, msg]);
+      // Auto-scroll terminal
+      setTimeout(() => {
+        if (terminalRef.current) terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+      }, 20);
+
+      if (msg.type === 'done') {
+        setUpdateState('done');
+        es.close();
+        // Poll until server comes back up, then reload
+        const poll = setInterval(() => {
+          fetch('/api/version').then(() => { clearInterval(poll); window.location.reload(); }).catch(() => {});
+        }, 1500);
+      }
+      if (msg.type === 'error') {
+        setUpdateState('error');
+        es.close();
+      }
+    };
+
+    es.onerror = () => {
+      // Server restarted — connection dropped — poll for it to come back
+      es.close();
+      if (updateState !== 'error') {
+        const poll = setInterval(() => {
+          fetch('/api/version').then(() => { clearInterval(poll); window.location.reload(); }).catch(() => {});
+        }, 1500);
+      }
+    };
   }
 
   const inputCls = 'block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white';
@@ -437,14 +482,26 @@ export function Settings() {
       </form>
 
       {/* ── Version / Update ─────────────────────────────────────────────── */}
-      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-3">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-4 w-4 text-slate-400" />
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Version &amp; Updates</h2>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <GitBranch className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Version &amp; Updates</h2>
+          </div>
+          <Button
+            variant="primary" size="sm"
+            onClick={runUpdate}
+            loading={updateState === 'running'}
+            disabled={updateState === 'running'}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            {updateState === 'running' ? 'Updating…' : 'Update App'}
+          </Button>
         </div>
 
+        {/* Current version */}
         {version ? (
-          <div className="rounded-lg bg-slate-50 dark:bg-slate-900 px-4 py-3 space-y-1">
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-900 px-4 py-3 space-y-0.5">
             <div className="flex items-center gap-2">
               <code className="text-xs font-mono font-bold text-brand-600 dark:text-brand-400">{version.hash}</code>
               <span className="text-xs text-slate-400">{version.date}</span>
@@ -457,15 +514,43 @@ export function Settings() {
           </div>
         )}
 
-        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-4 py-3 space-y-1.5">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">To update this installation:</p>
-          <ol className="text-xs text-slate-500 dark:text-slate-400 space-y-1 list-decimal list-inside">
-            <li>Close the server (Ctrl + C in the PowerShell window)</li>
-            <li>Double-click <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">update.bat</code> in the Stock folder</li>
-            <li>It will pull the latest code, install packages, and rebuild automatically</li>
-            <li>Your data is never affected — it lives in the <code className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">data/</code> folder which is never touched by updates</li>
-          </ol>
-        </div>
+        {/* Terminal output */}
+        {updateLines.length > 0 && (
+          <div
+            ref={terminalRef}
+            className="rounded-lg bg-slate-900 p-4 h-56 overflow-y-auto font-mono text-xs space-y-0.5"
+          >
+            {updateLines.map((line, i) => (
+              <div key={i} className={
+                line.type === 'step'  ? 'text-brand-400 font-semibold mt-2 first:mt-0' :
+                line.type === 'done'  ? 'text-emerald-400 font-semibold mt-2' :
+                line.type === 'error' ? 'text-red-400 font-semibold' :
+                                        'text-slate-400'
+              }>
+                {line.type === 'step'  ? `▶ ${line.text}` :
+                 line.type === 'done'  ? `✓ ${line.text}` :
+                 line.type === 'error' ? `✕ ${line.text}` :
+                                         `  ${line.text}`}
+              </div>
+            ))}
+            {updateState === 'running' && (
+              <div className="text-slate-500 animate-pulse">…</div>
+            )}
+            {updateState === 'done' && (
+              <div className="text-emerald-400 mt-2">  Waiting for server to restart — page will reload automatically…</div>
+            )}
+          </div>
+        )}
+
+        {updateState === 'error' && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-400">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" /> Update failed. Check the output above and try again.
+          </div>
+        )}
+
+        <p className="text-xs text-slate-400">
+          Your data is never affected by updates — stock levels, history, and settings are stored separately and are never touched.
+        </p>
       </section>
     </div>
   );

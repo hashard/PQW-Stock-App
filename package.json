@@ -15,6 +15,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "googleapis": "^140.0.0",
     "lucide-react": "^0.294.0",
@@ -41,6 +42,11 @@
   "build": {
     "appId": "com.pqw.stock-dashboard",
     "productName": "PQW Stock",
+    "publish": {
+      "provider": "github",
+      "owner": "hashard",
+      "repo": "PQW-Stock-App"
+    },
     "directories": {
       "output": "dist-electron"
     },

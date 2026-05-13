@@ -794,6 +794,11 @@ app.get('/api/export/adjustments', (_req, res) => {
 // ── Version info ─────────────────────────────────────────────────────────────
 
 function getVersion() {
+  // Packaged Electron exe — use app version set by electron-main.mjs
+  if (process.env.APP_VERSION) {
+    return { hash: '', date: '', subject: `v${process.env.APP_VERSION}` };
+  }
+  // Git clone / PM2 mode — read from git
   try {
     const hash    = execSync('git rev-parse --short HEAD',  { cwd: __dirname }).toString().trim();
     const date    = execSync('git log -1 --format=%cd --date=short', { cwd: __dirname }).toString().trim();
@@ -818,6 +823,25 @@ app.get('/api/update', (_req, res) => {
   const send = (type, text) =>
     res.write(`data: ${JSON.stringify({ type, text })}\n\n`);
 
+  // ── Packaged Electron exe — use electron-updater ──────────────────
+  if (global.pqwUpdater) {
+    const { emitter, check } = global.pqwUpdater;
+
+    const onLine = (line) => send('out', line);
+    const onDone = (code) => {
+      emitter.off('line', onLine);
+      if (code === 0) send('done', 'Update complete.');
+      else            send('error', 'Update failed — see above.');
+      res.end();
+    };
+
+    emitter.on('line', onLine);
+    emitter.once('done', onDone);
+    check();
+    return;
+  }
+
+  // ── Git clone / PM2 mode — pull, build, restart ───────────────────
   function runCmd(label, cmd, args) {
     return new Promise((resolve, reject) => {
       send('step', label);
@@ -839,8 +863,7 @@ app.get('/api/update', (_req, res) => {
       await runCmd('Pulling latest changes from GitHub…', 'git', ['pull']);
       await runCmd('Installing packages…',               'npm', ['install']);
       await runCmd('Building the app…',                  'npm', ['run', 'build']);
-      send('done', 'Update complete — restarting server…');
-      // Give the SSE message time to reach the browser before restart
+      send('done', 'Update complete — restarting…');
       setTimeout(() => process.exit(0), 800);
     } catch (err) {
       send('error', err.message);

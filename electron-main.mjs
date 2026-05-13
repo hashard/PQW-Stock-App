@@ -1,4 +1,6 @@
 import { app, Tray, Menu, shell, nativeImage } from 'electron';
+import { autoUpdater } from 'electron-updater';
+import { EventEmitter } from 'events';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
@@ -78,12 +80,45 @@ async function createTray() {
   });
 }
 
+// ── Auto-updater ───────────────────────────────────────────────────
+
+function setupUpdater() {
+  const emitter = new EventEmitter();
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update',  ()     => emitter.emit('line', 'Checking for updates…'));
+  autoUpdater.on('update-not-available', ()     => { emitter.emit('line', 'Already up to date.'); emitter.emit('done', 0); });
+  autoUpdater.on('update-available',     (info) => emitter.emit('line', `Update found: v${info.version} — downloading…`));
+  autoUpdater.on('download-progress',    (p)    => emitter.emit('line', `Downloading… ${Math.round(p.percent)}%`));
+  autoUpdater.on('update-downloaded',    ()     => {
+    emitter.emit('line', 'Download complete — restarting…');
+    emitter.emit('done', 0);
+    setTimeout(() => autoUpdater.quitAndInstall(true, true), 1500);
+  });
+  autoUpdater.on('error', (err) => {
+    emitter.emit('line', `Update error: ${err.message}`);
+    emitter.emit('done', 1);
+  });
+
+  // Expose to server.js (same process)
+  global.pqwUpdater = {
+    emitter,
+    check: () => autoUpdater.checkForUpdates(),
+  };
+}
+
 // ── Startup ────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
-  // Set data directory BEFORE importing server
+  // Expose app version and data dir to server.js
+  process.env.APP_VERSION = app.getVersion();
   process.env.DATA_DIR = getDataDir();
   ensureDataDir();
+
+  // Set up auto-updater (packaged builds only — no git in dev)
+  if (app.isPackaged) setupUpdater();
 
   // Import server — it starts listening on import (top-level app.listen)
   await import('./server.js');

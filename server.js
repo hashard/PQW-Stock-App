@@ -611,16 +611,16 @@ app.post('/api/sheets/pull', async (_req, res) => {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: settings.sheets_id,
-      range: `${tabName}!A:K`,
+      range: `${tabName}!A:Z`,   // wide range — handles any number of columns
     });
 
     const rows = response.data.values;
     if (!rows || rows.length < 2) return res.status(400).json({ error: 'Sheet appears empty or has no data rows.' });
 
-    const headers = rows[0];
+    // Case-insensitive, whitespace-tolerant header lookup
+    const headers    = rows[0].map(h => (h || '').trim().toLowerCase());
+    const col = (name) => headers.indexOf(name.toLowerCase().trim());
 
-    // Locate each column by header name (flexible — column order doesn't matter)
-    const col = (name) => headers.indexOf(name);
     const skuCol        = col('SKU');
     const cuttingCol    = col('Cutting Room');
     const cuttingMinCol = col('Cutting Room Min');
@@ -629,8 +629,10 @@ app.post('/api/sheets/pull', async (_req, res) => {
     const hiddenCol     = col('Hidden');
 
     if (skuCol === -1) {
-      return res.status(400).json({ error: 'Sheet must have a "SKU" column header in row 1.' });
+      return res.status(400).json({ error: `Sheet must have a "SKU" column header in row 1. Found: ${rows[0].join(', ')}` });
     }
+
+    console.log('[Sheets Pull] Columns found:', { skuCol, cuttingCol, wooCol, thresholdCol, hiddenCol, cuttingMinCol });
 
     // Build a map keyed by SKU containing all editable fields found in the sheet
     const sheetData = new Map();

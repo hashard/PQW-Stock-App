@@ -157,14 +157,25 @@ echo.
 echo  It will start automatically every time
 echo  this PC boots.
 echo.
-:: ── Create desktop shortcut ───────────────────────────────────────────────────
-echo  Creating desktop shortcut...
+:: ── Create desktop + Start Menu shortcuts ─────────────────────────────────────
+echo  Creating shortcuts...
 (
   echo [InternetShortcut]
   echo URL=http://localhost:3001
   echo IconIndex=0
 ) > "%USERPROFILE%\Desktop\PQW Stock Dashboard.url"
 
+if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\PQW" (
+    mkdir "%APPDATA%\Microsoft\Windows\Start Menu\Programs\PQW"
+)
+(
+  echo [InternetShortcut]
+  echo URL=http://localhost:3001
+  echo IconIndex=0
+) > "%APPDATA%\Microsoft\Windows\Start Menu\Programs\PQW\PQW Stock Dashboard.url"
+
+echo  To pin to the taskbar: right-click the desktop shortcut ^> "Pin to taskbar"
+echo.
 echo  Opening browser...
 start http://localhost:3001
 echo.

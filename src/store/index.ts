@@ -33,10 +33,11 @@ interface Store {
   selectedIds:         Set<string>;
 
   // ── Table ─────────────────────────────────────────────────────────────────
-  filters:     FilterConfig;
-  sort:        SortConfig;
-  page:        number;
-  showHidden:  boolean;
+  filters:       FilterConfig;
+  sort:          SortConfig;
+  page:          number;
+  showHidden:    boolean;
+  hiddenColumns: Set<string>;
 
   // ── Data actions ──────────────────────────────────────────────────────────
   setProducts:    (p: Product[]) => void;
@@ -64,9 +65,13 @@ interface Store {
   setSort:         (s: SortConfig)            => void;
   setPage:         (p: number)                => void;
   setShowHidden:   (v: boolean)               => void;
+  toggleColumn:    (key: string)              => void;
 }
 
-const storedDark = localStorage.getItem('pqw_dark') === 'true';
+const storedDark    = localStorage.getItem('pqw_dark') === 'true';
+const storedHiddenCols: Set<string> = new Set(
+  JSON.parse(localStorage.getItem('pqw_hidden_cols') ?? '[]')
+);
 
 export const useStore = create<Store>((set) => ({
   products:    [],
@@ -86,7 +91,8 @@ export const useStore = create<Store>((set) => ({
   filters: { search: '', status: 'all', category: 'all' },
   sort:    { key: 'name', direction: 'asc' },
   page:    0,
-  showHidden: false,
+  showHidden:    false,
+  hiddenColumns: storedHiddenCols,
 
   setProducts:    (products)    => set({ products }),
   updateProduct:  (product)     => set(s => ({ products: s.products.map(p => p.id === product.id ? product : p) })),
@@ -117,6 +123,12 @@ export const useStore = create<Store>((set) => ({
 
   setFilters: (f) => set(s => ({ filters: { ...s.filters, ...f }, page: 0 })),
   setSort:    (sort) => set({ sort }),
-  setPage:         (page) => set({ page }),
-  setShowHidden:   (showHidden) => set({ showHidden }),
+  setPage:    (page) => set({ page }),
+  setShowHidden: (showHidden) => set({ showHidden }),
+  toggleColumn: (key) => set(s => {
+    const next = new Set(s.hiddenColumns);
+    next.has(key) ? next.delete(key) : next.add(key);
+    localStorage.setItem('pqw_hidden_cols', JSON.stringify([...next]));
+    return { hiddenColumns: next };
+  }),
 }));

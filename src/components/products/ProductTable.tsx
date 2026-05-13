@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import {
   ChevronUp, ChevronDown, ChevronsUpDown, Edit2, Eye, AlertTriangle,
-  Search, Filter, Download, Users, X, Scissors, EyeOff,
+  Search, Filter, Download, Users, X, Scissors, EyeOff, Columns,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { StatusBadge } from '../ui/Badge';
@@ -32,11 +32,37 @@ function timeAgo(iso: string | null) {
 
 export function ProductTable() {
   const {
-    products, isLoading, filters, sort, page, showHidden,
+    products, isLoading, filters, sort, page, showHidden, hiddenColumns,
     setFilters, setSort, setPage, openAdjustModal, openDrawer,
     isBulkMode, selectedIds, toggleSelectedId, clearSelected, toggleBulkMode,
-    updateProduct, setShowHidden,
+    updateProduct, setShowHidden, toggleColumn,
   } = useStore();
+
+  const COLS = [
+    { key: 'sku',                label: 'SKU' },
+    { key: 'category',           label: 'Category' },
+    { key: 'woo_stock',          label: 'Woo Stock' },
+    { key: 'cutting_room_stock', label: 'Cutting Room' },
+    { key: 'combined_stock',     label: 'Combined' },
+    { key: 'status',             label: 'Status' },
+    { key: 'low_stock_threshold',label: 'Threshold' },
+    { key: 'updated_at',         label: 'Updated' },
+  ] as const;
+
+  const show = (key: string) => !hiddenColumns.has(key);
+
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setColPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const [bulkUser,   setBulkUser]   = useState('');
   const [bulkReason, setBulkReason] = useState('');
@@ -132,7 +158,8 @@ export function ProductTable() {
     </th>
   );
 
-  const colSpan = isBulkMode ? 11 : 10;
+  const visibleColCount = COLS.filter(c => show(c.key)).length;
+  const colSpan = visibleColCount + 2 + (isBulkMode ? 1 : 0); // +2 for Product + Actions
 
   return (
     <div className="flex flex-col gap-3">
@@ -193,6 +220,39 @@ export function ProductTable() {
             {filtered.length} product{filtered.length !== 1 ? 's' : ''}
           </span>
 
+          {/* Column picker */}
+          <div className="relative" ref={colPickerRef}>
+            <Button size="sm" variant={hiddenColumns.size > 0 ? 'primary' : 'secondary'} onClick={() => setColPickerOpen(v => !v)}>
+              <Columns className="h-3.5 w-3.5" /> Columns{hiddenColumns.size > 0 ? ` (${COLS.length - hiddenColumns.size}/${COLS.length})` : ''}
+            </Button>
+            {colPickerOpen && (
+              <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg p-2 space-y-0.5">
+                {COLS.map(col => (
+                  <button
+                    key={col.key}
+                    type="button"
+                    onClick={() => toggleColumn(col.key)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                  >
+                    <span className={show(col.key) ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400'}>{col.label}</span>
+                    <span className={`h-4 w-4 rounded border-2 flex items-center justify-center shrink-0 ${show(col.key) ? 'border-brand-500 bg-brand-500' : 'border-slate-300 dark:border-slate-600'}`}>
+                      {show(col.key) && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
+                    </span>
+                  </button>
+                ))}
+                {hiddenColumns.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => COLS.forEach(c => hiddenColumns.has(c.key) && toggleColumn(c.key))}
+                    className="w-full mt-1 rounded-lg px-3 py-1.5 text-xs text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 text-center transition-colors border-t border-slate-100 dark:border-slate-700 pt-2"
+                  >
+                    Show all columns
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Bulk mode toggle */}
           <Button size="sm" variant={isBulkMode ? 'primary' : 'secondary'} onClick={toggleBulkMode}>
             <Users className="h-3.5 w-3.5" /> {isBulkMode ? 'Exit Bulk' : 'Bulk Edit'}
@@ -248,14 +308,14 @@ export function ProductTable() {
                 </th>
               )}
               <Th label="Product"        col="name"               />
-              <Th label="SKU"            col="sku"                className="w-32" />
-              <Th label="Category"       col="category"           className="w-32" />
-              <Th label="Woo"            col="woo_stock"          className="w-20 text-right" />
-              <Th label="Cutting Room"   col="cutting_room_stock" className="w-28 text-right" />
-              <Th label="Combined"       col="combined_stock"     className="w-24 text-right" />
-              <Th label="Status"         col="status"             className="w-32" />
-              <Th label="Threshold"      col="low_stock_threshold" className="w-24 text-right" />
-              <Th label="Updated"        col="updated_at"         className="w-24" />
+              {show('sku')                && <Th label="SKU"          col="sku"                 className="w-32" />}
+              {show('category')           && <Th label="Category"     col="category"            className="w-32" />}
+              {show('woo_stock')          && <Th label="Woo"          col="woo_stock"           className="w-20 text-right" />}
+              {show('cutting_room_stock') && <Th label="Cutting Room" col="cutting_room_stock"  className="w-28 text-right" />}
+              {show('combined_stock')     && <Th label="Combined"     col="combined_stock"      className="w-24 text-right" />}
+              {show('status')             && <Th label="Status"       col="status"              className="w-32" />}
+              {show('low_stock_threshold')&& <Th label="Threshold"    col="low_stock_threshold" className="w-24 text-right" />}
+              {show('updated_at')         && <Th label="Updated"      col="updated_at"          className="w-24" />}
               <th className="px-4 py-3 w-20" />
             </tr>
           </thead>
@@ -310,39 +370,43 @@ export function ProductTable() {
                     </td>
 
                     {/* SKU */}
-                    <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku}</td>
+                    {show('sku') && <td className="px-4 py-3 font-mono text-xs text-slate-500">{product.sku}</td>}
 
                     {/* Category */}
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate max-w-[120px]">{product.category}</td>
+                    {show('category') && <td className="px-4 py-3 text-slate-600 dark:text-slate-400 truncate max-w-[120px]">{product.category}</td>}
 
                     {/* Woo stock */}
-                    <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-400">{product.woo_stock}</td>
+                    {show('woo_stock') && <td className="px-4 py-3 text-right font-mono text-slate-600 dark:text-slate-400">{product.woo_stock}</td>}
 
                     {/* Cutting room stock */}
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openAdjustModal(product.id)}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-slate-800 dark:text-slate-100 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-700 dark:hover:text-brand-300 transition-colors"
-                        title="Click to adjust"
-                      >
-                        {product.cutting_room_stock}
-                        <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
-                      </button>
-                    </td>
+                    {show('cutting_room_stock') && (
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => openAdjustModal(product.id)}
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-slate-800 dark:text-slate-100 hover:bg-brand-50 dark:hover:bg-brand-900/30 hover:text-brand-700 dark:hover:text-brand-300 transition-colors"
+                          title="Click to adjust"
+                        >
+                          {product.cutting_room_stock}
+                          <Edit2 className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-brand-400" />
+                        </button>
+                      </td>
+                    )}
 
                     {/* Combined stock */}
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-mono font-bold text-slate-900 dark:text-white">{product.combined_stock}</span>
-                    </td>
+                    {show('combined_stock') && (
+                      <td className="px-4 py-3 text-right">
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">{product.combined_stock}</span>
+                      </td>
+                    )}
 
                     {/* Status */}
-                    <td className="px-4 py-3"><StatusBadge status={product.status} /></td>
+                    {show('status') && <td className="px-4 py-3"><StatusBadge status={product.status} /></td>}
 
                     {/* Threshold */}
-                    <td className="px-4 py-3 text-right font-mono text-slate-500">{product.low_stock_threshold}</td>
+                    {show('low_stock_threshold') && <td className="px-4 py-3 text-right font-mono text-slate-500">{product.low_stock_threshold}</td>}
 
                     {/* Updated */}
-                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{timeAgo(product.updated_at)}</td>
+                    {show('updated_at') && <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{timeAgo(product.updated_at)}</td>}
 
                     {/* Actions */}
                     <td className="px-4 py-3">

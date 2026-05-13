@@ -379,8 +379,19 @@ export function Settings() {
           {form.sheets_enabled && (
             <>
               <Field label="Google Sheet ID" hint="The long ID from your sheet URL: docs.google.com/spreadsheets/d/[THIS PART]/edit">
-                <input type="text" value={form.sheets_id ?? ''} onChange={e => update('sheets_id', e.target.value)}
-                  placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" className={`${inputCls} font-mono text-xs`} />
+                <div className="flex items-center gap-2">
+                  <input type="text" value={form.sheets_id ?? ''} onChange={e => update('sheets_id', e.target.value)}
+                    placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" className={`${inputCls} font-mono text-xs`} />
+                  {form.sheets_id && (
+                    <a
+                      href={`https://docs.google.com/spreadsheets/d/${form.sheets_id}`}
+                      target="_blank" rel="noreferrer"
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700 dark:bg-teal-900/20 dark:text-teal-400 transition-colors"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" /> Open Sheet
+                    </a>
+                  )}
+                </div>
               </Field>
 
               <Field label="Sheet Tab Name" hint='Name of the tab inside the spreadsheet (default: "Stock")'>

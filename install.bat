@@ -1,11 +1,12 @@
 @echo off
-title PQW Stock Dashboard — Installer
+title PQW Stock Dashboard - Installer
 color 0A
 setlocal EnableDelayedExpansion
+chcp 65001 >nul 2>&1
 
 echo.
 echo  ============================================
-echo    PQW Stock Dashboard — Installer
+echo    PQW Stock Dashboard - Installer
 echo  ============================================
 echo.
 
@@ -72,7 +73,7 @@ echo.
 cd /d "%USERPROFILE%"
 
 if exist "Stock\.git" (
-    echo  [3/6] App folder found — pulling latest version...
+    echo  [3/6] App folder found - pulling latest version...
     cd Stock
     git pull
 ) else (

@@ -6,14 +6,18 @@
  */
 import { spawn } from 'child_process';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { createRequire } from 'module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const electronCmd = path.join(__dirname, 'node_modules', '.bin', 'electron.cmd');
+
+// Use the electron package's own binary path — avoids .cmd wrapper issues
+const require = createRequire(import.meta.url);
+const electronPath = require('electron');
 
 console.log('[tray] Starting PQW Stock Dashboard...');
 
-const proc = spawn(electronCmd, ['.'], {
+const proc = spawn(electronPath, ['.'], {
   stdio: 'inherit',
   shell: false,
   cwd: __dirname,

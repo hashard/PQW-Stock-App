@@ -1,5 +1,4 @@
 import { app, Tray, Menu, shell, nativeImage } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import { EventEmitter } from 'events';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -82,7 +81,10 @@ async function createTray() {
 
 // ── Auto-updater ───────────────────────────────────────────────────
 
-function setupUpdater() {
+async function setupUpdater() {
+  // Dynamic import so electron-updater is never loaded in dev/unpackaged mode
+  const pkg = await import('electron-updater');
+  const autoUpdater = pkg.autoUpdater ?? pkg.default?.autoUpdater;
   const emitter = new EventEmitter();
 
   autoUpdater.autoDownload = true;

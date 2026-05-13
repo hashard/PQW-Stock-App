@@ -598,7 +598,7 @@ app.post('/api/sheets/push', async (_req, res) => {
   }
 });
 
-// Pull cutting room stock from sheet
+// Pull all editable fields from sheet
 app.post('/api/sheets/pull', async (_req, res) => {
   const settings = readData('settings');
   if (!settings.sheets_enabled)              return res.status(400).json({ error: 'Google Sheets is not enabled.' });
@@ -617,26 +617,39 @@ app.post('/api/sheets/pull', async (_req, res) => {
     const rows = response.data.values;
     if (!rows || rows.length < 2) return res.status(400).json({ error: 'Sheet appears empty or has no data rows.' });
 
-    const headers    = rows[0];
-    const skuCol     = headers.indexOf('SKU');
-    const cuttingCol = headers.indexOf('Cutting Room');
-    const cuttingMinCol = headers.indexOf('Cutting Room Min');
+    const headers = rows[0];
 
-    if (skuCol === -1 || cuttingCol === -1) {
-      return res.status(400).json({ error: 'Sheet must have "SKU" and "Cutting Room" column headers in row 1.' });
+    // Locate each column by header name (flexible — column order doesn't matter)
+    const col = (name) => headers.indexOf(name);
+    const skuCol        = col('SKU');
+    const cuttingCol    = col('Cutting Room');
+    const cuttingMinCol = col('Cutting Room Min');
+    const wooCol        = col('Woo Stock');
+    const thresholdCol  = col('Threshold');
+    const hiddenCol     = col('Hidden');
+
+    if (skuCol === -1) {
+      return res.status(400).json({ error: 'Sheet must have a "SKU" column header in row 1.' });
     }
 
-    const sheetMap    = new Map();
-    const sheetMinMap = new Map();
+    // Build a map keyed by SKU containing all editable fields found in the sheet
+    const sheetData = new Map();
     for (const row of rows.slice(1)) {
-      const sku     = (row[skuCol] || '').trim();
-      const cutting = parseInt(row[cuttingCol], 10);
-      if (sku && !isNaN(cutting)) sheetMap.set(sku, cutting);
+      const sku = (row[skuCol] || '').trim();
+      if (!sku) continue;
 
-      if (cuttingMinCol !== -1) {
-        const min = parseInt(row[cuttingMinCol], 10);
-        if (sku && !isNaN(min)) sheetMinMap.set(sku, min);
+      const entry = {};
+      if (cuttingCol    !== -1 && row[cuttingCol]    !== undefined) { const v = parseInt(row[cuttingCol],    10); if (!isNaN(v)) entry.cutting_room_stock   = v; }
+      if (cuttingMinCol !== -1 && row[cuttingMinCol] !== undefined) { const v = parseInt(row[cuttingMinCol], 10); if (!isNaN(v)) entry.cutting_room_minimum = v; }
+      if (wooCol        !== -1 && row[wooCol]        !== undefined) { const v = parseInt(row[wooCol],        10); if (!isNaN(v)) entry.woo_stock             = v; }
+      if (thresholdCol  !== -1 && row[thresholdCol]  !== undefined) { const v = parseInt(row[thresholdCol],  10); if (!isNaN(v)) entry.low_stock_threshold   = v; }
+      if (hiddenCol     !== -1 && row[hiddenCol]     !== undefined) {
+        const raw = (row[hiddenCol] || '').trim().toLowerCase();
+        if (raw === 'yes' || raw === 'true' || raw === '1') entry.hidden = true;
+        else if (raw === 'no' || raw === 'false' || raw === '0' || raw === '') entry.hidden = false;
       }
+
+      if (Object.keys(entry).length > 0) sheetData.set(sku, entry);
     }
 
     const products    = readData('products');
@@ -646,35 +659,49 @@ app.post('/api/sheets/pull', async (_req, res) => {
 
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
-      if (!sheetMap.has(p.sku)) continue;
+      const data = sheetData.get(p.sku);
+      if (!data) continue;
 
-      const newCutting = sheetMap.get(p.sku);
-      const previous   = p.cutting_room_stock ?? 0;
-      const stockChanged = newCutting !== previous;
+      let changed = false;
+      const patch = { updated_at: now };
 
-      const newCuttingMin = sheetMinMap.has(p.sku) ? sheetMinMap.get(p.sku) : (p.cutting_room_minimum ?? 0);
-      const minChanged = sheetMinMap.has(p.sku) && newCuttingMin !== (p.cutting_room_minimum ?? 0);
-
-      if (!stockChanged && !minChanged) continue;
-
-      if (stockChanged) {
+      // Cutting room — log adjustment
+      if (data.cutting_room_stock !== undefined && data.cutting_room_stock !== (p.cutting_room_stock ?? 0)) {
+        const prev = p.cutting_room_stock ?? 0;
         adjustments.push({
-          id:              uid(),
-          product_id:      p.id,
-          sku:             p.sku,
-          product_name:    p.name,
+          id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
           adjustment_type: 'sheet_import',
-          quantity_change: newCutting - previous,
-          previous_stock:  previous,
-          new_stock:       newCutting,
-          reason:          'Imported from Google Sheet',
-          user_name:       'Sheet Import',
-          created_at:      now,
+          quantity_change: data.cutting_room_stock - prev,
+          previous_stock: prev, new_stock: data.cutting_room_stock,
+          reason: 'Imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
         });
+        patch.cutting_room_stock = data.cutting_room_stock;
+        changed = true;
       }
 
-      products[i] = { ...p, cutting_room_stock: newCutting, cutting_room_minimum: newCuttingMin, updated_at: now };
-      updated++;
+      // Woo stock — log adjustment
+      if (data.woo_stock !== undefined && data.woo_stock !== (p.woo_stock ?? 0)) {
+        const prev = p.woo_stock ?? 0;
+        adjustments.push({
+          id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
+          adjustment_type: 'sheet_import',
+          quantity_change: data.woo_stock - prev,
+          previous_stock: prev, new_stock: data.woo_stock,
+          reason: 'Woo stock imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
+        });
+        patch.woo_stock = data.woo_stock;
+        changed = true;
+      }
+
+      // Other fields — update silently
+      if (data.cutting_room_minimum !== undefined && data.cutting_room_minimum !== (p.cutting_room_minimum ?? 0)) { patch.cutting_room_minimum = data.cutting_room_minimum; changed = true; }
+      if (data.low_stock_threshold  !== undefined && data.low_stock_threshold  !== (p.low_stock_threshold  ?? 0)) { patch.low_stock_threshold  = data.low_stock_threshold;  changed = true; }
+      if (data.hidden               !== undefined && data.hidden               !== p.hidden)                       { patch.hidden               = data.hidden;               changed = true; }
+
+      if (changed) {
+        products[i] = { ...p, ...patch };
+        updated++;
+      }
     }
 
     writeData('products', products);
@@ -683,7 +710,7 @@ app.post('/api/sheets/pull', async (_req, res) => {
     res.json({
       ok:         true,
       updated,
-      total_rows: sheetMap.size,
+      total_rows: sheetData.size,
       pulled_at:  now,
       products:   products.map(computeProduct),
     });

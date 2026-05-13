@@ -157,6 +157,14 @@ echo.
 echo  It will start automatically every time
 echo  this PC boots.
 echo.
+:: ── Create desktop shortcut ───────────────────────────────────────────────────
+echo  Creating desktop shortcut...
+(
+  echo [InternetShortcut]
+  echo URL=http://localhost:3001
+  echo IconIndex=0
+) > "%USERPROFILE%\Desktop\PQW Stock Dashboard.url"
+
 echo  Opening browser...
 start http://localhost:3001
 echo.

@@ -142,7 +142,7 @@ echo.
 echo  [6/6] Setting up auto-start on Windows boot...
 call npm install -g pm2 >nul 2>&1
 call npm install -g pm2-windows-startup >nul 2>&1
-call pm2 start server.js --name pqw-stock >nul 2>&1
+call pm2 start start-tray.js --name pqw-stock >nul 2>&1
 call pm2 save >nul 2>&1
 call pm2-startup install >nul 2>&1
 
@@ -174,7 +174,22 @@ if not exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\PQW" (
   echo IconIndex=0
 ) > "%APPDATA%\Microsoft\Windows\Start Menu\Programs\PQW\PQW Stock Dashboard.url"
 
-echo  To pin to the taskbar: right-click the desktop shortcut ^> "Pin to taskbar"
+echo  ============================================
+echo   INSTALL TO TASKBAR (recommended)
+echo  ============================================
+echo.
+echo  For the best experience — taskbar icon,
+echo  standalone app window, no browser tabs:
+echo.
+echo  1. The app will open in your browser now
+echo  2. Look for the install icon ( + ) in the
+echo     address bar (Chrome or Edge)
+echo  3. Click it and choose "Install"
+echo.
+echo  This pins the app to your taskbar and
+echo  desktop automatically, just like a real app.
+echo.
+echo  ============================================
 echo.
 echo  Opening browser...
 start http://localhost:3001

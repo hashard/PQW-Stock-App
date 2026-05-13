@@ -51,7 +51,7 @@ echo  [4/4] Restarting the server...
 pm2 restart pqw-stock >nul 2>&1
 if errorlevel 1 (
     echo  Server is not running via PM2.
-    echo  Please restart it manually:  node server.js
+    echo  Please restart it manually:  node start-tray.js
 ) else (
     echo  Server restarted successfully via PM2.
 )

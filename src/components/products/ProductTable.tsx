@@ -67,7 +67,7 @@ export function ProductTable() {
   const [bulkUser,   setBulkUser]   = useState('');
   const [bulkReason, setBulkReason] = useState('');
   const [bulkQty,    setBulkQty]    = useState('');
-  const [bulkType,   setBulkType]   = useState<'add' | 'remove' | 'set'>('add');
+  const [bulkType,   setBulkType]   = useState<'add' | 'remove' | 'set' | 'hide'>('add');
   const [bulkLoading,setBulkLoading]= useState(false);
 
   // Derived categories for filter dropdown
@@ -122,6 +122,20 @@ export function ProductTable() {
   }
 
   async function applyBulk() {
+    if (bulkType === 'hide') {
+      if (!bulkUser.trim()) return;
+      setBulkLoading(true);
+      try {
+        for (const id of selectedIds) {
+          const updated = await api.products.update(id, { hidden: true } as Partial<Product>);
+          updateProduct(updated);
+        }
+        clearSelected();
+      } finally {
+        setBulkLoading(false);
+      }
+      return;
+    }
     if (!bulkQty || !bulkReason.trim() || !bulkUser.trim()) return;
     setBulkLoading(true);
     try {
@@ -274,15 +288,23 @@ export function ProductTable() {
             <option value="add">Add</option>
             <option value="remove">Remove</option>
             <option value="set">Set to</option>
+            <option value="hide">Hide</option>
           </select>
-          <input type="number" min="0" placeholder="Qty" value={bulkQty} onChange={e => setBulkQty(e.target.value)}
-            className="h-8 w-20 rounded border border-blue-300 bg-white px-2 text-xs font-mono dark:border-blue-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          {bulkType !== 'hide' && (
+            <input type="number" min="0" placeholder="Qty" value={bulkQty} onChange={e => setBulkQty(e.target.value)}
+              className="h-8 w-20 rounded border border-blue-300 bg-white px-2 text-xs font-mono dark:border-blue-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          )}
           <input type="text" placeholder="Staff name" value={bulkUser} onChange={e => setBulkUser(e.target.value)}
             className="h-8 w-28 rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
-          <input type="text" placeholder="Reason (required)" value={bulkReason} onChange={e => setBulkReason(e.target.value)}
-            className="h-8 flex-1 min-w-[140px] rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          {bulkType !== 'hide' && (
+            <input type="text" placeholder="Reason (required)" value={bulkReason} onChange={e => setBulkReason(e.target.value)}
+              className="h-8 flex-1 min-w-[140px] rounded border border-brand-300 bg-white px-2 text-xs dark:border-brand-700 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          )}
+          {bulkType === 'hide' && (
+            <span className="text-xs text-slate-500">Hide selected products from dashboard</span>
+          )}
           <Button size="xs" variant="primary" loading={bulkLoading}
-            disabled={!bulkQty || !bulkReason.trim() || !bulkUser.trim()}
+            disabled={bulkType === 'hide' ? !bulkUser.trim() : !bulkQty || !bulkReason.trim() || !bulkUser.trim()}
             onClick={applyBulk}>Apply</Button>
           <Button size="xs" variant="ghost" onClick={clearSelected}><X className="h-3 w-3" /></Button>
         </div>

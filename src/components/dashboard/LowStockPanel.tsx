@@ -22,9 +22,10 @@ export function LowStockPanel() {
   const flagged = products
     .filter(p => !p.hidden && (
       p.status === 'low_stock' || p.status === 'out_of_stock' ||
-      (p.low_stock_threshold > 0 && p.woo_stock <= p.low_stock_threshold)
+      (p.low_stock_threshold > 0 && p.woo_stock <= p.low_stock_threshold) ||
+      p.woo_stock <= 0
     ))
-    .sort((a, b) => a.combined_stock - b.combined_stock);
+    .sort((a, b) => a.woo_stock - b.woo_stock);
 
   if (flagged.length === 0) return null;
 
@@ -121,7 +122,7 @@ export function LowStockPanel() {
             <thead>
               <tr className="border-b border-amber-200 dark:border-amber-800/40">
                 {isBulkMode && <th className="w-10 px-4 py-2" />}
-                {['Product', 'SKU', 'Combined', 'Threshold', 'Status', ''].map(h => (
+                {['Product', 'SKU', 'Woo Stock', 'Threshold', 'Status', ''].map(h => (
                   <th key={h} className="px-4 py-2 text-left text-xs font-medium text-amber-700 dark:text-amber-400">
                     {h}
                   </th>
@@ -150,7 +151,7 @@ export function LowStockPanel() {
                   )}
                   <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">{p.name}</td>
                   <td className="px-4 py-2 font-mono text-xs text-slate-500">{p.sku}</td>
-                  <td className="px-4 py-2 font-mono font-bold text-slate-800 dark:text-slate-200">{p.combined_stock}</td>
+                  <td className="px-4 py-2 font-mono font-bold text-slate-800 dark:text-slate-200">{p.woo_stock}</td>
                   <td className="px-4 py-2 font-mono text-slate-500">{p.low_stock_threshold}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2">

@@ -136,11 +136,11 @@ export function LowStockPanel() {
                   ].join(' ')}
                 >
                   {isBulkMode && (
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(p.id)}
-                        onChange={(e) => { e.stopPropagation(); toggleSelectedId(p.id); }}
+                        onChange={() => toggleSelectedId(p.id)}
                         className="h-4 w-4 rounded border-slate-300 text-amber-600"
                       />
                     </td>

@@ -53,7 +53,7 @@
     "files": [
       "dist/**/*",
       "server.js",
-      "data/**/*",
+
       "public/**/*",
       "electron-main.mjs",
       "node_modules/**/*",
@@ -68,7 +68,7 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "PQW Stock Setup.exe",
+      "artifactName": "PQW-Stock-Setup.exe",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     }

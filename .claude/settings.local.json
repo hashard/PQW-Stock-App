@@ -2,7 +2,39 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(Select-String \"cutting_room\")",
+      "Bash(timeout 8 node server.js)",
+      "Bash(node -c server.js)",
+      "Bash(timeout 5 node server.js)",
+      "Bash(git commit *)",
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(Start-Sleep -Seconds 2)",
+      "Bash(Get-Content \"C:\\\\Users\\\\FRAMEW~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Framework-16-Stock\\\\907db5ce-06d5-4540-8503-334bf1145a12\\\\tasks\\\\bktrm7ln6.output\")",
+      "Bash(git *)",
+      "Bash(netstat -ano)",
+      "Bash(findstr :3001)",
+      "Bash(taskkill *)",
+      "PowerShell(Stop-Process *)",
+      "PowerShell(node scripts/generate-icons.mjs)",
+      "PowerShell(node \"C:\\\\Users\\\\Framework 16\\\\Stock\\\\scripts\\\\generate-icons.mjs\")",
+      "PowerShell(Remove-Item *)",
+      "PowerShell(New-Item *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(npx electron-builder build --win nsis 2>&1)",
+      "Bash(Get-ChildItem *)",
+      "Bash(dir \"C:\\\\Users\\\\Framework 16\\\\Stock\\\\public\")",
+      "Bash(dir \"C:\\\\Users\\\\Framework 16\\\\Stock\\\\node_modules\\\\.bin\\\\electron*\")",
+      "Bash(dir \"C:\\\\Users\\\\Framework 16\\\\Stock\\\\node_modules\\\\.bin\")",
+      "PowerShell(& npm run --prefix \"C:\\\\Users\\\\Framework 16\\\\Stock\" \"\" 2>$null)",
+      "PowerShell(npx --prefix \"C:\\\\Users\\\\Framework 16\\\\Stock\" pm2 stop all 2>$null)",
+      "PowerShell(Add-MpPreference -ExclusionPath \"C:\\\\Users\\\\Framework 16\\\\Stock\\\\dist-electron\" -ErrorAction SilentlyContinue)",
+      "Bash(npx electron-builder *)",
+      "Bash(gh release *)",
+      "Bash(npx pm2 *)"
     ]
   }
 }

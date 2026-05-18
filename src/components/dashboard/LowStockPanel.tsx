@@ -20,7 +20,10 @@ export function LowStockPanel() {
   const [bulkLoading,setBulkLoading]= useState(false);
 
   const flagged = products
-    .filter(p => !p.hidden && (p.status === 'low_stock' || p.status === 'out_of_stock'))
+    .filter(p => !p.hidden && (
+      p.status === 'low_stock' || p.status === 'out_of_stock' ||
+      (p.low_stock_threshold > 0 && p.woo_stock <= p.low_stock_threshold)
+    ))
     .sort((a, b) => a.combined_stock - b.combined_stock);
 
   if (flagged.length === 0) return null;

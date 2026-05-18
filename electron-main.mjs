@@ -11,8 +11,8 @@ let tray = null;
 
 function getDataDir() {
   if (app.isPackaged) {
-    // In packaged exe: data/ folder next to the exe
-    return path.join(path.dirname(app.getPath('exe')), 'data');
+    // Use persistent userData (%APPDATA%\pqw-stock-dashboard) — survives updates
+    return path.join(app.getPath('userData'), 'data');
   }
   // In dev: use the existing data/ folder
   return path.join(__dirname, 'data');
@@ -20,6 +20,22 @@ function getDataDir() {
 
 function ensureDataDir() {
   const dir = getDataDir();
+
+  // Migrate data from old location (next to exe) to new userData location
+  if (app.isPackaged) {
+    const oldDir = path.join(path.dirname(app.getPath('exe')), 'data');
+    if (fs.existsSync(oldDir) && oldDir !== dir) {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      for (const file of fs.readdirSync(oldDir)) {
+        const src = path.join(oldDir, file);
+        const dst = path.join(dir, file);
+        if (fs.statSync(src).isFile() && !fs.existsSync(dst)) {
+          fs.copyFileSync(src, dst);
+        }
+      }
+    }
+  }
+
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }

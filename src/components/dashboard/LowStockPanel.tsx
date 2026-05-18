@@ -5,7 +5,7 @@ import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
 
 export function LowStockPanel() {
-  const { products, openAdjustModal } = useStore();
+  const { products, openAdjustModal, openDrawer } = useStore();
   const [collapsed, setCollapsed] = useState(false);
 
   const flagged = products
@@ -45,14 +45,18 @@ export function LowStockPanel() {
             </thead>
             <tbody>
               {flagged.map(p => (
-                <tr key={p.id} className="border-b border-amber-100 last:border-0 dark:border-amber-800/20">
+                <tr
+                  key={p.id}
+                  onClick={() => openDrawer(p.id)}
+                  className="border-b border-amber-100 last:border-0 dark:border-amber-800/20 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-900/20"
+                >
                   <td className="px-4 py-2 font-medium text-slate-800 dark:text-slate-200 truncate max-w-[180px]">{p.name}</td>
                   <td className="px-4 py-2 font-mono text-xs text-slate-500">{p.sku}</td>
                   <td className="px-4 py-2 font-mono font-bold text-slate-800 dark:text-slate-200">{p.combined_stock}</td>
                   <td className="px-4 py-2 font-mono text-slate-500">{p.low_stock_threshold}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2">
-                    <Button size="xs" variant="ghost" onClick={() => openAdjustModal(p.id)}>
+                    <Button size="xs" variant="ghost" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAdjustModal(p.id); }}>
                       <Edit2 className="h-3 w-3" /> Adjust
                     </Button>
                   </td>

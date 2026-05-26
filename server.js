@@ -61,6 +61,28 @@ function computeProduct(p) {
   return { ...p, combined_stock: combined, status, needs_laser_cut };
 }
 
+async function autoWooPush(product, settings) {
+  if (!product.woo_product_id) return;
+  const { woo_url, consumer_key, consumer_secret } = settings;
+  if (!woo_url || !consumer_key || !consumer_secret) return;
+
+  const base = woo_url.replace(/\/$/, '');
+  const auth = Buffer.from(`${consumer_key}:${consumer_secret}`).toString('base64');
+  const endpoint = product.woo_variation_id
+    ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+    : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+
+  try {
+    await fetch(endpoint, {
+      method: 'PUT',
+      headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stock_quantity: product.woo_stock, manage_stock: true }),
+    });
+  } catch (err) {
+    console.error(`[autoWooPush] Failed to push product ${product.id}:`, err.message);
+  }
+}
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
@@ -132,14 +154,10 @@ app.post('/api/adjustments', (req, res) => {
     created_at:      new Date().toISOString(),
   };
 
-  products[idx] = { ...product, cutting_room_stock: newStock, updated_at: new Date().toISOString() };
-  writeData('products', products);
-
-  const adjustments = readData('adjustments');
-  adjustments.push(adjustment);
-  writeData('adjustments', adjustments);
-
   silentSheetsPush(products);
+  if (settings.auto_woo_enabled) {
+    autoWooPush(products[idx], settings);
+  }
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
@@ -231,6 +249,9 @@ app.post('/api/woo-stock', async (req, res) => {
   writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
+  if (settings.auto_woo_enabled) {
+    autoWooPush(products[idx], settings);
+  }
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 
@@ -323,6 +344,9 @@ app.post('/api/transfer', async (req, res) => {
   writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
+  if (settings.auto_woo_enabled) {
+    autoWooPush(products[idx], settings);
+  }
   res.json({ product: computeProduct(products[idx]), adjustment });
 });
 

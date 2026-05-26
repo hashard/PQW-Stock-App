@@ -48,6 +48,7 @@ export interface AppSettings {
   sheets_tab:               string;
   sheets_credentials_json:  string;
   woo_push_instant:         boolean; // push woo changes live immediately vs. batch via Push Woo
+  auto_woo_enabled:        boolean; // enable automatic woo stock push on interval
   require_reason:           boolean; // require a reason on every stock adjustment
 }
 

@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   default_threshold: 5, default_cutting_room_minimum: 0, auto_sync_interval: 0,
   sheets_enabled: false, sheets_id: '', sheets_tab: 'Stock', sheets_credentials_json: '',
   woo_push_instant: false,
+  auto_woo_enabled: false,
   require_reason: true,
 };
 

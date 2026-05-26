@@ -443,6 +443,13 @@ export function Settings() {
             description="When on, editing Woo Stock or moving stock to Woo updates the live store immediately. When off, changes are saved locally and pushed only when you use Push Woo."
           />
 
+          <Toggle
+            checked={!!form.auto_woo_enabled}
+            onChange={v => update('auto_woo_enabled', v)}
+            label="Enable Auto Woo Sync"
+            description="When on, stock changes automatically push to WooCommerce. Products are also pulled from WooCommerce on the auto-sync interval."
+          />
+
           <div className="border-t border-slate-100 dark:border-slate-700" />
 
           <Toggle

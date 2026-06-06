@@ -499,7 +499,7 @@ export function Settings() {
         </Button>
       </form>
 
-      {/* ── Backup & Restore ─────────────────────────────────────────────── */
+      {/* ── Backup & Restore ─────────────────────────────────────────────── */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-4">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <Download className="h-4 w-4 text-slate-400" /> Backup & Restore

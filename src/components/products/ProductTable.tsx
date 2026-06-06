@@ -374,6 +374,14 @@ export function ProductTable() {
                     {/* Product name */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
+                        {product.image_url && (
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="h-8 w-8 shrink-0 rounded object-cover"
+                            loading="lazy"
+                          />
+                        )}
                         {product.flagged && (
                           <span title="Missing or duplicate SKU — review needed">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />

@@ -417,7 +417,7 @@ app.post('/api/sync', async (_req, res) => {
     const syncedAt   = new Date().toISOString();
 
     // Helper: upsert one item into the map
-    function upsert({ id, variationId, name, sku, category, wooStock, flagged }) {
+    function upsert({ id, variationId, name, sku, category, wooStock, flagged, imageUrl }) {
       const key = sku || `__woo_${variationId ?? id}`;
       if (bySkuMap.has(key)) {
         const prev = bySkuMap.get(key);
@@ -429,6 +429,7 @@ app.post('/api/sync', async (_req, res) => {
           sku:               sku || prev.sku,
           category,
           woo_stock:         wooStock,
+          image_url:         imageUrl ?? prev.image_url ?? null,
           last_synced_at:    syncedAt,
           updated_at:        syncedAt,
           flagged,
@@ -442,6 +443,7 @@ app.post('/api/sync', async (_req, res) => {
           sku:                  sku || `NO-SKU-${variationId ?? id}`,
           category,
           woo_stock:            wooStock,
+          image_url:            imageUrl ?? null,
           cutting_room_stock:   0,
           low_stock_threshold:  settings.default_threshold ?? 5,
           cutting_room_minimum: settings.default_cutting_room_minimum ?? 0,
@@ -467,6 +469,7 @@ app.post('/api/sync', async (_req, res) => {
         category: wp.categories?.[0]?.name ?? 'Uncategorized',
         wooStock,
         flagged:  !sku,
+        imageUrl: wp.images?.[0]?.src ?? null,
       });
     }
 
@@ -487,6 +490,7 @@ app.post('/api/sync', async (_req, res) => {
         category:    v._parentCategory,
         wooStock,
         flagged:     !sku,
+        imageUrl:    v.image?.src ?? null, // variations may have their own image
       });
     }
 
@@ -923,4 +927,27 @@ app.get('*', (_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`\n  PQW Stock Dashboard → http://localhost:${PORT}\n`);
+});
+
+// ── Backup ─────────────────────────────────────────────────────────────────────
+app.get('/api/backup', (_req, res) => {
+  const products    = readData('products');
+  const adjustments = readData('adjustments');
+  const settings    = readData('settings');
+  const data        = { products, adjustments, settings };
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', 'attachment; filename="pqw-backup.json"');
+  res.send(JSON.stringify(data, null, 2));
+});
+
+// ── Restore ────────────────────────────────────────────────────────────────────
+app.post('/api/restore', (req, res) => {
+  const { products, adjustments, settings } = req.body;
+  if (!Array.isArray(products) || !Array.isArray(adjustments) || typeof settings !== 'object') {
+    return res.status(400).json({ error: 'Invalid backup format. Must contain products[], adjustments[], and settings object.' });
+  }
+  writeData('products', products);
+  writeData('adjustments', adjustments);
+  writeData('settings', settings);
+  res.json({ ok: true });
 });

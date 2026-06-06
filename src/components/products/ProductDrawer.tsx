@@ -103,6 +103,18 @@ export function ProductDrawer() {
           </button>
         </div>
 
+        {/* Product image */}
+        {product.image_url && (
+          <div className="shrink-0 border-b border-slate-200 dark:border-slate-700">
+            <img
+              src={product.image_url}
+              alt={product.name}
+              className="h-48 w-full object-cover"
+              loading="lazy"
+            />
+          </div>
+        )}
+
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-6">
 

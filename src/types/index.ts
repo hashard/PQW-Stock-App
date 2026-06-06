@@ -20,6 +20,7 @@ export interface Product {
   hidden:                boolean;
   cutting_room_minimum:  number;
   needs_laser_cut?:      boolean; // computed by server
+  image_url:             string | null; // from WooCommerce
 }
 
 export interface StockAdjustment {

@@ -499,7 +499,47 @@ export function Settings() {
         </Button>
       </form>
 
-      {/* ── Version / Update ─────────────────────────────────────────────── */}
+      {/* ── Backup & Restore ─────────────────────────────────────────────── */
+      <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-4">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <Download className="h-4 w-4 text-slate-400" /> Backup & Restore
+        </h2>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => window.location.href = '/api/backup'}>
+            <Download className="h-4 w-4" /> Backup Data
+          </Button>
+          <input
+            type="file"
+            id="restore-input"
+            accept=".json"
+            className="hidden"
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const text = await file.text();
+              try {
+                const data = JSON.parse(text);
+                if (!Array.isArray(data.products) || !Array.isArray(data.adjustments) || typeof data.settings !== 'object') {
+                  setErr('Invalid backup file'); return;
+                }
+                const res = await fetch('/api/restore', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text,
+                });
+                if (!res.ok) { setErr('Restore failed'); return; }
+                setSaved(true); setTimeout(() => setSaved(false), 2000);
+              } catch { setErr('Invalid backup file'); }
+            }}
+          />
+          <Button variant="secondary" onClick={() => document.getElementById('restore-input')?.click()}>
+            <Upload className="h-4 w-4" /> Restore Data
+          </Button>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Backup creates a JSON file with all products, adjustments, and settings.
+          Restore overwrites your current data — use with caution.
+        </p>
+      </section>
+
       <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">

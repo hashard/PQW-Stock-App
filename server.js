@@ -140,6 +140,11 @@ app.post('/api/adjustments', (req, res) => {
 
   if (newStock < 0) newStock = 0;
 
+  const now = new Date().toISOString();
+
+  products[idx] = { ...product, cutting_room_stock: newStock, updated_at: now };
+  writeData('products', products);
+
   const adjustment = {
     id:             uid(),
     product_id,
@@ -151,8 +156,12 @@ app.post('/api/adjustments', (req, res) => {
     new_stock:       newStock,
     reason:          reason.trim(),
     user_name:       user_name.trim(),
-    created_at:      new Date().toISOString(),
+    created_at:      now,
   };
+
+  const adjustments = readData('adjustments');
+  adjustments.push(adjustment);
+  writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
   if (settings.auto_woo_enabled) {

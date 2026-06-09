@@ -1,6 +1,6 @@
 {
   "name": "pqw-stock-dashboard",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "main": "electron-main.mjs",
@@ -47,7 +47,7 @@
       "owner": "hashard",
       "repo": "PQW-Stock-App"
     },
-    "directories": {
+      "directories": {
       "output": "dist-electron"
     },
     "files": [

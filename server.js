@@ -3,6 +3,7 @@ import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import crypto from 'crypto';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { google } from 'googleapis';
@@ -43,15 +44,32 @@ const DEFAULTS = {
 
 function initFile(key) {
   if (!fs.existsSync(FILES[key])) {
-    fs.writeFileSync(FILES[key], JSON.stringify(DEFAULTS[key], null, 2));
+    atomicWrite(FILES[key], DEFAULTS[key]);
   }
 }
 Object.keys(FILES).forEach(initFile);
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Safe persistence ────────────────────────────────────────────────────────────
+function atomicWrite(filePath, data) {
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, filePath);
+}
+
+// Per-file write queue to serialize concurrent reads/writes and prevent races.
+const fileQueues = {};
+function withFile(key, fn) {
+  fileQueues[key] ||= Promise.resolve();
+  const next = fileQueues[key].then(fn, fn);
+  fileQueues[key] = next;
+  return next;
+}
+
 const readData  = (key) => JSON.parse(fs.readFileSync(FILES[key], 'utf8'));
-const writeData = (key, data) => fs.writeFileSync(FILES[key], JSON.stringify(data, null, 2));
-const uid       = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+function writeData(key, data) {
+  return withFile(key, () => atomicWrite(FILES[key], data));
+}
+const uid       = () => crypto.randomUUID();
 
 function computeProduct(p) {
   const combined  = (p.woo_stock ?? 0) + (p.cutting_room_stock ?? 0);
@@ -93,18 +111,24 @@ app.get('/api/products', (_req, res) => {
   res.json(readData('products').map(computeProduct));
 });
 
-app.put('/api/products/:id', (req, res) => {
+app.put('/api/products/:id', async (req, res) => {
   const products = readData('products');
   const idx = products.findIndex(p => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Product not found' });
 
-  const updated = { ...products[idx], ...req.body, updated_at: new Date().toISOString() };
+  const allowed = ['name','category','woo_stock','cutting_room_stock','low_stock_threshold','cutting_room_minimum','notes','hidden'];
+  const patch = {};
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) patch[key] = req.body[key];
+  }
+
+  const updated = { ...products[idx], ...patch, updated_at: new Date().toISOString() };
   // Prevent accidentally overwriting computed fields via PUT
   delete updated.combined_stock;
   delete updated.status;
   delete updated.needs_laser_cut;
   products[idx] = updated;
-  writeData('products', products);
+  await writeData('products', products);
   res.json(computeProduct(updated));
 });
 
@@ -114,7 +138,7 @@ app.get('/api/adjustments', (_req, res) => {
   res.json(adj.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
 });
 
-app.post('/api/adjustments', (req, res) => {
+app.post('/api/adjustments', async (req, res) => {
   const { product_id, adjustment_type, quantity, reason, user_name } = req.body;
   const settings = readData('settings');
 
@@ -125,6 +149,14 @@ app.post('/api/adjustments', (req, res) => {
     return res.status(400).json({ error: 'Reason is required.' });
   }
 
+  const qty = Number(quantity);
+  if (!Number.isFinite(qty) || qty < 0) {
+    return res.status(400).json({ error: 'Quantity must be a non-negative number.' });
+  }
+  if (!['add','remove','set'].includes(adjustment_type)) {
+    return res.status(400).json({ error: 'Invalid adjustment_type' });
+  }
+
   const products = readData('products');
   const idx = products.findIndex(p => p.id === product_id);
   if (idx === -1) return res.status(404).json({ error: 'Product not found' });
@@ -133,17 +165,14 @@ app.post('/api/adjustments', (req, res) => {
   const previous = product.cutting_room_stock ?? 0;
   let newStock;
 
-  if (adjustment_type === 'add')    newStock = previous + Number(quantity);
-  else if (adjustment_type === 'remove') newStock = previous - Number(quantity);
-  else if (adjustment_type === 'set')    newStock = Number(quantity);
-  else return res.status(400).json({ error: 'Invalid adjustment_type' });
-
-  if (newStock < 0) newStock = 0;
+  if (adjustment_type === 'add')    newStock = previous + qty;
+  else if (adjustment_type === 'remove') newStock = Math.max(0, previous - qty);
+  else if (adjustment_type === 'set')    newStock = qty;
 
   const now = new Date().toISOString();
 
   products[idx] = { ...product, cutting_room_stock: newStock, updated_at: now };
-  writeData('products', products);
+  await writeData('products', products);
 
   const adjustment = {
     id:             uid(),
@@ -161,7 +190,7 @@ app.post('/api/adjustments', (req, res) => {
 
   const adjustments = readData('adjustments');
   adjustments.push(adjustment);
-  writeData('adjustments', adjustments);
+  await writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
   if (settings.auto_woo_enabled) {
@@ -171,12 +200,49 @@ app.post('/api/adjustments', (req, res) => {
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-app.get('/api/settings', (_req, res) => res.json(readData('settings')));
+function sanitizeSettings(raw) {
+  const masked = { ...raw };
+  // Never return live secrets to the client.
+  if (masked.consumer_key)     masked.consumer_key     = '*'.repeat(8);
+  if (masked.consumer_secret)  masked.consumer_secret  = '*'.repeat(8);
+  if (masked.sheets_credentials_json) {
+    try {
+      const creds = JSON.parse(masked.sheets_credentials_json);
+      masked.sheets_credentials_json = JSON.stringify({ ...creds, private_key: '*'.repeat(8), client_email: creds.client_email ?? '' });
+    } catch {
+      masked.sheets_credentials_json = '*'.repeat(8);
+    }
+  }
+  return masked;
+}
 
-app.put('/api/settings', (req, res) => {
-  const settings = { ...readData('settings'), ...req.body };
-  writeData('settings', settings);
-  res.json(settings);
+function normalizeSettings(raw) {
+  return { ...DEFAULTS.settings, ...raw };
+}
+
+app.get('/api/settings', (_req, res) => res.json(sanitizeSettings(normalizeSettings(readData('settings')))));
+
+app.put('/api/settings', async (req, res) => {
+  const existing = normalizeSettings(readData('settings'));
+  const incoming = req.body || {};
+  const next = { ...existing };
+
+  // Preserve secrets if client sent masked placeholders (so unchanged secrets are not overwritten).
+  const SECRET_FIELDS = ['consumer_key', 'consumer_secret', 'sheets_credentials_json'];
+  for (const key of SECRET_FIELDS) {
+    const v = incoming[key];
+    if (v === undefined) continue;
+    next[key] = (typeof v === 'string' && /^\*+$/.test(v)) ? existing[key] : v;
+  }
+
+  // Overwrite everything else from the client.
+  for (const key of Object.keys(existing)) {
+    if (SECRET_FIELDS.includes(key)) continue;
+    if (incoming[key] !== undefined) next[key] = incoming[key];
+  }
+
+  await writeData('settings', next);
+  res.json(sanitizeSettings(next));
 });
 
 // ── Edit WooCommerce Stock ────────────────────────────────────────────────────
@@ -193,8 +259,11 @@ app.post('/api/woo-stock', async (req, res) => {
   }
 
   const qty = Number(quantity);
-  if (isNaN(qty) || qty < 0) {
+  if (isNaN(qty) || qty < 0 || !Number.isFinite(qty)) {
     return res.status(400).json({ error: 'Quantity must be 0 or more.' });
+  }
+  if (!['add','remove','set'].includes(adjustment_type)) {
+    return res.status(400).json({ error: 'Invalid adjustment_type.' });
   }
 
   const products = readData('products');
@@ -208,7 +277,6 @@ app.post('/api/woo-stock', async (req, res) => {
   if (adjustment_type === 'add')         newWooStock = previousWoo + qty;
   else if (adjustment_type === 'remove') newWooStock = Math.max(0, previousWoo - qty);
   else if (adjustment_type === 'set')    newWooStock = qty;
-  else return res.status(400).json({ error: 'Invalid adjustment_type.' });
 
   // Optionally push live to WooCommerce immediately
   if (settings.woo_push_instant && product.woo_product_id) {
@@ -251,11 +319,11 @@ app.post('/api/woo-stock', async (req, res) => {
   };
 
   products[idx] = { ...product, woo_stock: newWooStock, updated_at: now };
-  writeData('products', products);
+  await writeData('products', products);
 
   const adjustments = readData('adjustments');
   adjustments.push(adjustment);
-  writeData('adjustments', adjustments);
+  await writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
   if (settings.auto_woo_enabled) {
@@ -278,7 +346,7 @@ app.post('/api/transfer', async (req, res) => {
   }
 
   const qty = Number(quantity);
-  if (isNaN(qty) || qty <= 0) {
+  if (isNaN(qty) || qty <= 0 || !Number.isFinite(qty)) {
     return res.status(400).json({ error: 'Quantity must be a positive number.' });
   }
 
@@ -346,11 +414,11 @@ app.post('/api/transfer', async (req, res) => {
     updated_at:         now,
   };
 
-  writeData('products', products);
+  await writeData('products', products);
 
   const adjustments = readData('adjustments');
   adjustments.push(adjustment);
-  writeData('adjustments', adjustments);
+  await writeData('adjustments', adjustments);
 
   silentSheetsPush(products);
   if (settings.auto_woo_enabled) {
@@ -504,7 +572,7 @@ app.post('/api/sync', async (_req, res) => {
     }
 
     const finalProducts = Array.from(bySkuMap.values());
-    writeData('products', finalProducts);
+    await writeData('products', finalProducts);
 
     const totalSynced = simpleProducts.length + variationItems.length;
     res.json({
@@ -538,28 +606,38 @@ app.post('/api/push-woo', async (_req, res) => {
     let pushed = 0;
     const errors = [];
 
-    for (const product of pushable) {
-      try {
-        // Variations use a different endpoint than simple products
-        const endpoint = product.woo_variation_id
-          ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
-          : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+    // Limit concurrency so the server stays responsive and we don't hammer WooCommerce.
+    const CONCURRENCY = 5;
+    const queue = [...pushable];
+    async function runBatch() {
+      while (queue.length) {
+        const product = queue.shift();
+        try {
+          const endpoint = product.woo_variation_id
+            ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+            : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
 
-        const wooRes = await fetch(endpoint, {
-          method: 'PUT',
-          headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stock_quantity: product.woo_stock ?? 0, manage_stock: true }),
-        });
-        if (!wooRes.ok) {
-          const body = await wooRes.text();
-          errors.push(`${product.sku}: ${wooRes.status} ${body}`);
-        } else {
-          pushed++;
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 15000);
+          const wooRes = await fetch(endpoint, {
+            method: 'PUT',
+            signal: controller.signal,
+            headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stock_quantity: product.woo_stock ?? 0, manage_stock: true }),
+          });
+          clearTimeout(timeout);
+          if (!wooRes.ok) {
+            const body = await wooRes.text();
+            errors.push(`${product.sku}: ${wooRes.status} ${body}`);
+          } else {
+            pushed++;
+          }
+        } catch (err) {
+          errors.push(`${product.sku}: ${err.message}`);
         }
-      } catch (err) {
-        errors.push(`${product.sku}: ${err.message}`);
       }
     }
+    await Promise.all(Array.from({ length: CONCURRENCY }).map(runBatch));
 
     res.json({
       pushed,
@@ -743,8 +821,8 @@ app.post('/api/sheets/pull', async (_req, res) => {
       }
     }
 
-    writeData('products', products);
-    writeData('adjustments', adjustments);
+    await writeData('products', products);
+    await writeData('adjustments', adjustments);
 
     res.json({
       ok:         true,
@@ -950,13 +1028,52 @@ app.get('/api/backup', (_req, res) => {
 });
 
 // ── Restore ────────────────────────────────────────────────────────────────────
-app.post('/api/restore', (req, res) => {
+app.post('/api/restore', async (req, res) => {
   const { products, adjustments, settings } = req.body;
   if (!Array.isArray(products) || !Array.isArray(adjustments) || typeof settings !== 'object') {
     return res.status(400).json({ error: 'Invalid backup format. Must contain products[], adjustments[], and settings object.' });
   }
-  writeData('products', products);
-  writeData('adjustments', adjustments);
-  writeData('settings', settings);
-  res.json({ ok: true });
+  if (products.length > 10000 || adjustments.length > 50000) {
+    return res.status(400).json({ error: 'Backup file exceeds maximum allowed rows.' });
+  }
+
+  // Coerce each product back to the expected shape and drop any injected computed fields.
+  const restoredProducts = products.map(p => ({
+    id:                   typeof p.id === 'string' ? p.id : uid(),
+    woo_product_id:       p.woo_product_id ?? null,
+    woo_variation_id:     p.woo_variation_id ?? null,
+    name:                 String(p.name ?? ''),
+    sku:                  String(p.sku ?? ''),
+    category:             String(p.category ?? 'Uncategorized'),
+    woo_stock:            Number.isFinite(Number(p.woo_stock)) ? Number(p.woo_stock) : 0,
+    cutting_room_stock:   Number.isFinite(Number(p.cutting_room_stock)) ? Number(p.cutting_room_stock) : 0,
+    low_stock_threshold:  Number.isFinite(Number(p.low_stock_threshold)) ? Number(p.low_stock_threshold) : 5,
+    cutting_room_minimum: Number.isFinite(Number(p.cutting_room_minimum)) ? Number(p.cutting_room_minimum) : 0,
+    image_url:            p.image_url ?? null,
+    notes:                String(p.notes ?? ''),
+    hidden:               !!p.hidden,
+    last_synced_at:       p.last_synced_at ?? null,
+    updated_at:           p.updated_at ?? new Date().toISOString(),
+  }));
+
+  const restoredAdjustments = adjustments.map(a => ({
+    id:              typeof a.id === 'string' ? a.id : uid(),
+    product_id:      String(a.product_id ?? ''),
+    sku:             String(a.sku ?? ''),
+    product_name:    String(a.product_name ?? ''),
+    adjustment_type: ['add','remove','set','transfer_to_woo','woo_edit','sheet_import'].includes(a.adjustment_type) ? a.adjustment_type : 'sheet_import',
+    quantity_change: Number.isFinite(Number(a.quantity_change)) ? Number(a.quantity_change) : 0,
+    previous_stock:  Number.isFinite(Number(a.previous_stock)) ? Number(a.previous_stock) : 0,
+    new_stock:       Number.isFinite(Number(a.new_stock)) ? Number(a.new_stock) : 0,
+    reason:          String(a.reason ?? ''),
+    user_name:       String(a.user_name ?? ''),
+    created_at:      a.created_at ?? new Date().toISOString(),
+  }));
+
+  const restoredSettings = { ...DEFAULTS.settings, ...settings };
+
+  await writeData('products', restoredProducts);
+  await writeData('adjustments', restoredAdjustments);
+  await writeData('settings', restoredSettings);
+  res.json({ ok: true, products: restoredProducts.length, adjustments: restoredAdjustments.length });
 });

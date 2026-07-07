@@ -12,3 +12,4 @@ data/
 .DS_Store
 Thumbs.db
 dist-electron/
+dist-electron-new/

@@ -69,6 +69,19 @@ const readData  = (key) => JSON.parse(fs.readFileSync(FILES[key], 'utf8'));
 function writeData(key, data) {
   return withFile(key, () => atomicWrite(FILES[key], data));
 }
+
+// Atomic read-modify-write: the read, mutation, and write all run inside the
+// per-file queue so concurrent requests can't clobber each other's changes.
+// The mutator receives the current data and returns the value to persist
+// (return undefined to skip the write). Resolves to the persisted value.
+function mutateData(key, mutator) {
+  return withFile(key, () => {
+    const current = JSON.parse(fs.readFileSync(FILES[key], 'utf8'));
+    const next = mutator(current);
+    if (next !== undefined) atomicWrite(FILES[key], next);
+    return next;
+  });
+}
 const uid       = () => crypto.randomUUID();
 
 function computeProduct(p) {
@@ -91,11 +104,15 @@ async function autoWooPush(product, settings) {
     : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
 
   try {
-    await fetch(endpoint, {
+    const wooRes = await fetch(endpoint, {
       method: 'PUT',
       headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ stock_quantity: product.woo_stock, manage_stock: true }),
     });
+    if (!wooRes.ok) {
+      const body = await wooRes.text().catch(() => '');
+      console.error(`[autoWooPush] WooCommerce returned ${wooRes.status} for product ${product.id}: ${body}`);
+    }
   } catch (err) {
     console.error(`[autoWooPush] Failed to push product ${product.id}:`, err.message);
   }
@@ -103,7 +120,7 @@ async function autoWooPush(product, settings) {
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // ── Products ──────────────────────────────────────────────────────────────────
@@ -112,23 +129,26 @@ app.get('/api/products', (_req, res) => {
 });
 
 app.put('/api/products/:id', async (req, res) => {
-  const products = readData('products');
-  const idx = products.findIndex(p => p.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Product not found' });
-
   const allowed = ['name','category','woo_stock','cutting_room_stock','low_stock_threshold','cutting_room_minimum','notes','hidden'];
   const patch = {};
   for (const key of allowed) {
     if (req.body[key] !== undefined) patch[key] = req.body[key];
   }
 
-  const updated = { ...products[idx], ...patch, updated_at: new Date().toISOString() };
-  // Prevent accidentally overwriting computed fields via PUT
-  delete updated.combined_stock;
-  delete updated.status;
-  delete updated.needs_laser_cut;
-  products[idx] = updated;
-  await writeData('products', products);
+  let updated = null;
+  await mutateData('products', (products) => {
+    const idx = products.findIndex(p => p.id === req.params.id);
+    if (idx === -1) return undefined; // not found — skip write
+    updated = { ...products[idx], ...patch, updated_at: new Date().toISOString() };
+    // Prevent accidentally overwriting computed fields via PUT
+    delete updated.combined_stock;
+    delete updated.status;
+    delete updated.needs_laser_cut;
+    products[idx] = updated;
+    return products;
+  });
+
+  if (!updated) return res.status(404).json({ error: 'Product not found' });
   res.json(computeProduct(updated));
 });
 
@@ -157,46 +177,47 @@ app.post('/api/adjustments', async (req, res) => {
     return res.status(400).json({ error: 'Invalid adjustment_type' });
   }
 
-  const products = readData('products');
-  const idx = products.findIndex(p => p.id === product_id);
-  if (idx === -1) return res.status(404).json({ error: 'Product not found' });
-
-  const product  = products[idx];
-  const previous = product.cutting_room_stock ?? 0;
-  let newStock;
-
-  if (adjustment_type === 'add')    newStock = previous + qty;
-  else if (adjustment_type === 'remove') newStock = Math.max(0, previous - qty);
-  else if (adjustment_type === 'set')    newStock = qty;
-
   const now = new Date().toISOString();
+  let updatedProduct = null, previous = 0, newStock = 0;
 
-  products[idx] = { ...product, cutting_room_stock: newStock, updated_at: now };
-  await writeData('products', products);
+  const products = await mutateData('products', (products) => {
+    const idx = products.findIndex(p => p.id === product_id);
+    if (idx === -1) return undefined; // not found — skip write
+    const product = products[idx];
+    previous = product.cutting_room_stock ?? 0;
+
+    if (adjustment_type === 'add')         newStock = previous + qty;
+    else if (adjustment_type === 'remove') newStock = Math.max(0, previous - qty);
+    else if (adjustment_type === 'set')    newStock = qty;
+
+    products[idx] = { ...product, cutting_room_stock: newStock, updated_at: now };
+    updatedProduct = products[idx];
+    return products;
+  });
+
+  if (!updatedProduct) return res.status(404).json({ error: 'Product not found' });
 
   const adjustment = {
     id:             uid(),
     product_id,
-    sku:            product.sku,
-    product_name:   product.name,
+    sku:            updatedProduct.sku,
+    product_name:   updatedProduct.name,
     adjustment_type,
     quantity_change: newStock - previous,
     previous_stock:  previous,
     new_stock:       newStock,
-    reason:          reason.trim(),
+    reason:          (reason ?? '').trim(),
     user_name:       user_name.trim(),
     created_at:      now,
   };
 
-  const adjustments = readData('adjustments');
-  adjustments.push(adjustment);
-  await writeData('adjustments', adjustments);
+  await mutateData('adjustments', (adjustments) => { adjustments.push(adjustment); return adjustments; });
 
   silentSheetsPush(products);
   if (settings.auto_woo_enabled) {
-    autoWooPush(products[idx], settings);
+    autoWooPush(updatedProduct, settings);
   }
-  res.json({ product: computeProduct(products[idx]), adjustment });
+  res.json({ product: computeProduct(updatedProduct), adjustment });
 });
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -220,28 +241,43 @@ function normalizeSettings(raw) {
   return { ...DEFAULTS.settings, ...raw };
 }
 
+const SECRET_FIELDS = ['consumer_key', 'consumer_secret', 'sheets_credentials_json'];
+
+// True when an incoming secret value is a masked placeholder (from sanitizeSettings),
+// meaning the client/backup never had the real secret and we must keep the existing one.
+function isSecretMasked(key, v) {
+  if (typeof v !== 'string') return false;
+  if (/^\*+$/.test(v)) return true;
+  if (key === 'sheets_credentials_json') {
+    try {
+      const creds = JSON.parse(v);
+      return typeof creds.private_key === 'string' && /^\*+$/.test(creds.private_key);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+// Merge incoming settings over existing, preserving existing secrets when the
+// incoming value is a masked placeholder. Shared by PUT /settings and restore.
+function mergeSettings(existing, incoming = {}) {
+  const next = { ...existing };
+  for (const key of Object.keys(existing)) {
+    if (incoming[key] === undefined) continue;
+    next[key] = (SECRET_FIELDS.includes(key) && isSecretMasked(key, incoming[key]))
+      ? existing[key]
+      : incoming[key];
+  }
+  return next;
+}
+
 app.get('/api/settings', (_req, res) => res.json(sanitizeSettings(normalizeSettings(readData('settings')))));
 
 app.put('/api/settings', async (req, res) => {
-  const existing = normalizeSettings(readData('settings'));
-  const incoming = req.body || {};
-  const next = { ...existing };
-
-  // Preserve secrets if client sent masked placeholders (so unchanged secrets are not overwritten).
-  const SECRET_FIELDS = ['consumer_key', 'consumer_secret', 'sheets_credentials_json'];
-  for (const key of SECRET_FIELDS) {
-    const v = incoming[key];
-    if (v === undefined) continue;
-    next[key] = (typeof v === 'string' && /^\*+$/.test(v)) ? existing[key] : v;
-  }
-
-  // Overwrite everything else from the client.
-  for (const key of Object.keys(existing)) {
-    if (SECRET_FIELDS.includes(key)) continue;
-    if (incoming[key] !== undefined) next[key] = incoming[key];
-  }
-
-  await writeData('settings', next);
+  const next = await mutateData('settings', (raw) =>
+    mergeSettings(normalizeSettings(raw), req.body || {}),
+  );
   res.json(sanitizeSettings(next));
 });
 
@@ -318,18 +354,24 @@ app.post('/api/woo-stock', async (req, res) => {
     created_at:      now,
   };
 
-  products[idx] = { ...product, woo_stock: newWooStock, updated_at: now };
-  await writeData('products', products);
+  let updatedProduct = null;
+  const updatedProducts = await mutateData('products', (products) => {
+    const i = products.findIndex(p => p.id === product_id);
+    if (i === -1) return undefined;
+    products[i] = { ...products[i], woo_stock: newWooStock, updated_at: now };
+    updatedProduct = products[i];
+    return products;
+  });
 
-  const adjustments = readData('adjustments');
-  adjustments.push(adjustment);
-  await writeData('adjustments', adjustments);
+  if (!updatedProduct) return res.status(404).json({ error: 'Product not found.' });
 
-  silentSheetsPush(products);
+  await mutateData('adjustments', (adjustments) => { adjustments.push(adjustment); return adjustments; });
+
+  silentSheetsPush(updatedProducts);
   if (settings.auto_woo_enabled) {
-    autoWooPush(products[idx], settings);
+    autoWooPush(updatedProduct, settings);
   }
-  res.json({ product: computeProduct(products[idx]), adjustment });
+  res.json({ product: computeProduct(updatedProduct), adjustment });
 });
 
 // ── Transfer: Cutting Room → WooCommerce ─────────────────────────────────────
@@ -402,29 +444,34 @@ app.post('/api/transfer', async (req, res) => {
     quantity_change: -qty,
     previous_stock:  previousCutting,
     new_stock:       newCutting,
-    reason:          reason.trim(),
+    reason:          (reason ?? '').trim(),
     user_name:       user_name.trim(),
     created_at:      now,
   };
 
-  products[idx] = {
-    ...product,
-    cutting_room_stock: newCutting,
-    woo_stock:          newWooStock,
-    updated_at:         now,
-  };
+  let updatedProduct = null;
+  const updatedProducts = await mutateData('products', (products) => {
+    const i = products.findIndex(p => p.id === product_id);
+    if (i === -1) return undefined;
+    products[i] = {
+      ...products[i],
+      cutting_room_stock: newCutting,
+      woo_stock:          newWooStock,
+      updated_at:         now,
+    };
+    updatedProduct = products[i];
+    return products;
+  });
 
-  await writeData('products', products);
+  if (!updatedProduct) return res.status(404).json({ error: 'Product not found.' });
 
-  const adjustments = readData('adjustments');
-  adjustments.push(adjustment);
-  await writeData('adjustments', adjustments);
+  await mutateData('adjustments', (adjustments) => { adjustments.push(adjustment); return adjustments; });
 
-  silentSheetsPush(products);
+  silentSheetsPush(updatedProducts);
   if (settings.auto_woo_enabled) {
-    autoWooPush(products[idx], settings);
+    autoWooPush(updatedProduct, settings);
   }
-  res.json({ product: computeProduct(products[idx]), adjustment });
+  res.json({ product: computeProduct(updatedProduct), adjustment });
 });
 
 // ── WooCommerce Sync ──────────────────────────────────────────────────────────
@@ -489,13 +536,20 @@ app.post('/api/sync', async (_req, res) => {
   try {
     const settings   = readData('settings');
     const { simpleProducts, variationItems } = await fetchAllWooProducts(settings);
-    const existing   = readData('products');
-    const bySkuMap   = new Map(existing.map(p => [p.sku, p]));
     const syncedAt   = new Date().toISOString();
+
+    // Synthetic key for products WooCommerce exposes without a SKU. Must match the
+    // `sku` we store for them below, so a subsequent sync updates instead of duplicating.
+    const noSkuKey = (variationId, id) => `NO-SKU-${variationId ?? id}`;
+
+    // Build the merged catalog atomically against the freshest on-disk products,
+    // so an adjustment made during the (slow) WooCommerce fetch isn't clobbered.
+    const finalProducts = await mutateData('products', (existing) => {
+    const bySkuMap   = new Map(existing.map(p => [p.sku, p]));
 
     // Helper: upsert one item into the map
     function upsert({ id, variationId, name, sku, category, wooStock, flagged, imageUrl }) {
-      const key = sku || `__woo_${variationId ?? id}`;
+      const key = sku || noSkuKey(variationId, id);
       if (bySkuMap.has(key)) {
         const prev = bySkuMap.get(key);
         bySkuMap.set(key, {
@@ -517,7 +571,7 @@ app.post('/api/sync', async (_req, res) => {
           woo_product_id:       id,
           woo_variation_id:     variationId ?? null,
           name,
-          sku:                  sku || `NO-SKU-${variationId ?? id}`,
+          sku:                  sku || noSkuKey(variationId, id),
           category,
           woo_stock:            wooStock,
           image_url:            imageUrl ?? null,
@@ -571,8 +625,8 @@ app.post('/api/sync', async (_req, res) => {
       });
     }
 
-    const finalProducts = Array.from(bySkuMap.values());
-    await writeData('products', finalProducts);
+      return Array.from(bySkuMap.values());
+    });
 
     const totalSynced = simpleProducts.length + variationItems.length;
     res.json({
@@ -769,60 +823,63 @@ app.post('/api/sheets/pull', async (_req, res) => {
       if (Object.keys(entry).length > 0) sheetData.set(sku, entry);
     }
 
-    const products    = readData('products');
-    const adjustments = readData('adjustments');
-    const now         = new Date().toISOString();
-    let   updated     = 0;
+    const now            = new Date().toISOString();
+    const newAdjustments = [];
+    let   updated        = 0;
 
-    for (let i = 0; i < products.length; i++) {
-      const p = products[i];
-      const data = sheetData.get(p.sku);
-      if (!data) continue;
+    const products = await mutateData('products', (products) => {
+      for (let i = 0; i < products.length; i++) {
+        const p = products[i];
+        const data = sheetData.get(p.sku);
+        if (!data) continue;
 
-      let changed = false;
-      const patch = { updated_at: now };
+        let changed = false;
+        const patch = { updated_at: now };
 
-      // Cutting room — log adjustment
-      if (data.cutting_room_stock !== undefined && data.cutting_room_stock !== (p.cutting_room_stock ?? 0)) {
-        const prev = p.cutting_room_stock ?? 0;
-        adjustments.push({
-          id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
-          adjustment_type: 'sheet_import',
-          quantity_change: data.cutting_room_stock - prev,
-          previous_stock: prev, new_stock: data.cutting_room_stock,
-          reason: 'Imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
-        });
-        patch.cutting_room_stock = data.cutting_room_stock;
-        changed = true;
+        // Cutting room — log adjustment
+        if (data.cutting_room_stock !== undefined && data.cutting_room_stock !== (p.cutting_room_stock ?? 0)) {
+          const prev = p.cutting_room_stock ?? 0;
+          newAdjustments.push({
+            id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
+            adjustment_type: 'sheet_import',
+            quantity_change: data.cutting_room_stock - prev,
+            previous_stock: prev, new_stock: data.cutting_room_stock,
+            reason: 'Imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
+          });
+          patch.cutting_room_stock = data.cutting_room_stock;
+          changed = true;
+        }
+
+        // Woo stock — log adjustment
+        if (data.woo_stock !== undefined && data.woo_stock !== (p.woo_stock ?? 0)) {
+          const prev = p.woo_stock ?? 0;
+          newAdjustments.push({
+            id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
+            adjustment_type: 'sheet_import',
+            quantity_change: data.woo_stock - prev,
+            previous_stock: prev, new_stock: data.woo_stock,
+            reason: 'Woo stock imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
+          });
+          patch.woo_stock = data.woo_stock;
+          changed = true;
+        }
+
+        // Other fields — update silently
+        if (data.cutting_room_minimum !== undefined && data.cutting_room_minimum !== (p.cutting_room_minimum ?? 0)) { patch.cutting_room_minimum = data.cutting_room_minimum; changed = true; }
+        if (data.low_stock_threshold  !== undefined && data.low_stock_threshold  !== (p.low_stock_threshold  ?? 0)) { patch.low_stock_threshold  = data.low_stock_threshold;  changed = true; }
+        if (data.hidden               !== undefined && data.hidden               !== p.hidden)                       { patch.hidden               = data.hidden;               changed = true; }
+
+        if (changed) {
+          products[i] = { ...p, ...patch };
+          updated++;
+        }
       }
+      return products;
+    });
 
-      // Woo stock — log adjustment
-      if (data.woo_stock !== undefined && data.woo_stock !== (p.woo_stock ?? 0)) {
-        const prev = p.woo_stock ?? 0;
-        adjustments.push({
-          id: uid(), product_id: p.id, sku: p.sku, product_name: p.name,
-          adjustment_type: 'sheet_import',
-          quantity_change: data.woo_stock - prev,
-          previous_stock: prev, new_stock: data.woo_stock,
-          reason: 'Woo stock imported from Google Sheet', user_name: 'Sheet Import', created_at: now,
-        });
-        patch.woo_stock = data.woo_stock;
-        changed = true;
-      }
-
-      // Other fields — update silently
-      if (data.cutting_room_minimum !== undefined && data.cutting_room_minimum !== (p.cutting_room_minimum ?? 0)) { patch.cutting_room_minimum = data.cutting_room_minimum; changed = true; }
-      if (data.low_stock_threshold  !== undefined && data.low_stock_threshold  !== (p.low_stock_threshold  ?? 0)) { patch.low_stock_threshold  = data.low_stock_threshold;  changed = true; }
-      if (data.hidden               !== undefined && data.hidden               !== p.hidden)                       { patch.hidden               = data.hidden;               changed = true; }
-
-      if (changed) {
-        products[i] = { ...p, ...patch };
-        updated++;
-      }
+    if (newAdjustments.length) {
+      await mutateData('adjustments', (adjustments) => { adjustments.push(...newAdjustments); return adjustments; });
     }
-
-    await writeData('products', products);
-    await writeData('adjustments', adjustments);
 
     res.json({
       ok:         true,
@@ -1002,35 +1059,27 @@ app.get('/api/local-url', (_req, res) => {
   res.json({ url: `http://${localIp}:${PORT}` });
 });
 
-// ── SPA Fallback ──────────────────────────────────────────────────────────────
-app.get('*', (_req, res) => {
-  const index = path.join(__dirname, 'dist', 'index.html');
-  if (fs.existsSync(index)) {
-    res.sendFile(index);
-  } else {
-    res.status(404).send('Run `npm run build` first, or use `npm run dev` for development.');
-  }
-});
+// ── Backup / Restore ──────────────────────────────────────────────────────────
+// Build a full snapshot. `mask` hides secrets (for the LAN-exposed HTTP download);
+// scheduled on-disk backups keep secrets so they are fully restorable offline.
+function buildBackup({ mask } = {}) {
+  const settings = readData('settings');
+  return {
+    products:    readData('products'),
+    adjustments: readData('adjustments'),
+    settings:    mask ? sanitizeSettings(settings) : settings,
+  };
+}
 
-app.listen(PORT, () => {
-  console.log(`\n  PQW Stock Dashboard → http://localhost:${PORT}\n`);
-});
-
-// ── Backup ─────────────────────────────────────────────────────────────────────
 app.get('/api/backup', (_req, res) => {
-  const products    = readData('products');
-  const adjustments = readData('adjustments');
-  const settings    = readData('settings');
-  const data        = { products, adjustments, settings };
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Content-Disposition', 'attachment; filename="pqw-backup.json"');
-  res.send(JSON.stringify(data, null, 2));
+  res.send(JSON.stringify(buildBackup({ mask: true }), null, 2));
 });
 
-// ── Restore ────────────────────────────────────────────────────────────────────
 app.post('/api/restore', async (req, res) => {
   const { products, adjustments, settings } = req.body;
-  if (!Array.isArray(products) || !Array.isArray(adjustments) || typeof settings !== 'object') {
+  if (!Array.isArray(products) || !Array.isArray(adjustments) || typeof settings !== 'object' || settings === null) {
     return res.status(400).json({ error: 'Invalid backup format. Must contain products[], adjustments[], and settings object.' });
   }
   if (products.length > 10000 || adjustments.length > 50000) {
@@ -1070,10 +1119,56 @@ app.post('/api/restore', async (req, res) => {
     created_at:      a.created_at ?? new Date().toISOString(),
   }));
 
-  const restoredSettings = { ...DEFAULTS.settings, ...settings };
+  // Preserve current secrets when the backup carries masked placeholders (e.g. a
+  // backup downloaded from /api/backup), so restore never wipes live credentials.
+  const restoredSettings = mergeSettings(normalizeSettings(readData('settings')), settings);
 
   await writeData('products', restoredProducts);
   await writeData('adjustments', restoredAdjustments);
   await writeData('settings', restoredSettings);
   res.json({ ok: true, products: restoredProducts.length, adjustments: restoredAdjustments.length });
+});
+
+// ── Scheduled backups ───────────────────────────────────────────────────────────
+// Daily on-disk snapshots to DATA_DIR/backups/, keeping the most recent ones.
+// This is the only safety net for the JSON data store, so it runs in all modes.
+const BACKUP_DIR       = path.join(DATA_DIR, 'backups');
+const BACKUP_RETENTION = 14;
+const BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function writeScheduledBackup() {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    atomicWrite(path.join(BACKUP_DIR, `backup-${stamp}.json`), buildBackup({ mask: false }));
+
+    // Prune oldest, keeping the newest BACKUP_RETENTION files (names sort chronologically).
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('backup-') && f.endsWith('.json'))
+      .sort();
+    while (files.length > BACKUP_RETENTION) {
+      const old = files.shift();
+      try { fs.unlinkSync(path.join(BACKUP_DIR, old)); } catch { /* ignore */ }
+    }
+    console.log(`[Backup] Snapshot written (${files.length} kept).`);
+  } catch (err) {
+    console.error('[Backup] Scheduled backup failed:', err.message);
+  }
+}
+
+setTimeout(writeScheduledBackup, 15000).unref?.();
+setInterval(writeScheduledBackup, BACKUP_INTERVAL_MS).unref?.();
+
+// ── SPA Fallback ──────────────────────────────────────────────────────────────
+app.get('*', (_req, res) => {
+  const index = path.join(__dirname, 'dist', 'index.html');
+  if (fs.existsSync(index)) {
+    res.sendFile(index);
+  } else {
+    res.status(404).send('Run `npm run build` first, or use `npm run dev` for development.');
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`\n  PQW Stock Dashboard → http://localhost:${PORT}\n`);
 });

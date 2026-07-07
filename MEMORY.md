@@ -201,7 +201,7 @@ Unknown SKUs ignored. `silentSheetsPush()` fires (non-blocking) on every adjustm
 ---
 
 ## 12. Version Info
-- Current: `1.0.5`
+- Current: `1.1.0` — bug-fix + scheduled-backup release. Fixes: backup route un-shadowed (was after SPA catch-all), 25 MB JSON body limit (restore was 413-ing), no-reason crash when `require_reason` off, per-file atomic read-modify-write via `mutateData` (lost-update races), SKU-less sync dedup (`NO-SKU-<id>` key match), and secret masking in the `/api/backup` download. New: daily on-disk snapshots to `DATA_DIR/backups/` (keep 14, secrets included since local-only).
 - `package-lock.json` header shows `"version": "1.0.0"` (generated at v1.0.0, not updated since)
 - Notable deps: `electron-updater: ^6.8.3`, `electron-store: ^11.0.2`, `sharp: ^0.34.5` (dev, for icons)
 

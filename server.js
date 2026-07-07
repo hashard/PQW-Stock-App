@@ -660,24 +660,43 @@ app.post('/api/push-woo', async (_req, res) => {
     let pushed = 0;
     const errors = [];
 
+    // A timed-out or dropped request may still have been applied by WooCommerce.
+    // Before counting it as failed, read the product back and compare stock.
+    async function verifyPushed(endpoint, expectedStock) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        const wooRes = await fetch(endpoint, {
+          signal: controller.signal,
+          headers: { Authorization: `Basic ${auth}` },
+        });
+        clearTimeout(timeout);
+        if (!wooRes.ok) return false;
+        const data = await wooRes.json();
+        return Number(data.stock_quantity) === Number(expectedStock);
+      } catch {
+        return false; // couldn't verify — treat as failed
+      }
+    }
+
     // Limit concurrency so the server stays responsive and we don't hammer WooCommerce.
     const CONCURRENCY = 5;
     const queue = [...pushable];
     async function runBatch() {
       while (queue.length) {
         const product = queue.shift();
+        const endpoint = product.woo_variation_id
+          ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
+          : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
+        const targetStock = product.woo_stock ?? 0;
         try {
-          const endpoint = product.woo_variation_id
-            ? `${base}/wp-json/wc/v3/products/${product.woo_product_id}/variations/${product.woo_variation_id}`
-            : `${base}/wp-json/wc/v3/products/${product.woo_product_id}`;
-
           const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
+          const timeout = setTimeout(() => controller.abort(), 30000);
           const wooRes = await fetch(endpoint, {
             method: 'PUT',
             signal: controller.signal,
             headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stock_quantity: product.woo_stock ?? 0, manage_stock: true }),
+            body: JSON.stringify({ stock_quantity: targetStock, manage_stock: true }),
           });
           clearTimeout(timeout);
           if (!wooRes.ok) {
@@ -687,7 +706,12 @@ app.post('/api/push-woo', async (_req, res) => {
             pushed++;
           }
         } catch (err) {
-          errors.push(`${product.sku}: ${err.message}`);
+          // Timeout/network error — the update may have landed anyway; check before reporting failure.
+          if (await verifyPushed(endpoint, targetStock)) {
+            pushed++;
+          } else {
+            errors.push(`${product.sku}: ${err.message}`);
+          }
         }
       }
     }

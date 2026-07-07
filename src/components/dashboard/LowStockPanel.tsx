@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Edit2, Users, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, Users, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -133,7 +133,7 @@ export function LowStockPanel() {
               {flagged.map(p => (
                 <tr
                   key={p.id}
-                  onClick={() => openDrawer(p.id)}
+                  onClick={() => openAdjustModal(p.id)}
                   className={[
                     'border-b border-amber-100 last:border-0 dark:border-amber-800/20 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-900/20',
                     selectedIds.has(p.id) ? 'bg-amber-100 dark:bg-amber-900/30' : '',
@@ -155,8 +155,8 @@ export function LowStockPanel() {
                   <td className="px-4 py-2 font-mono text-slate-500">{p.low_stock_threshold}</td>
                   <td className="px-4 py-2"><StatusBadge status={p.status} /></td>
                   <td className="px-4 py-2">
-                    <Button size="xs" variant="ghost" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAdjustModal(p.id); }}>
-                      <Edit2 className="h-3 w-3" /> Adjust
+                    <Button size="xs" variant="ghost" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openDrawer(p.id); }}>
+                      <Eye className="h-3 w-3" /> Details
                     </Button>
                   </td>
                 </tr>

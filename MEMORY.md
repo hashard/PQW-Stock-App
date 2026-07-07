@@ -201,7 +201,8 @@ Unknown SKUs ignored. `silentSheetsPush()` fires (non-blocking) on every adjustm
 ---
 
 ## 12. Version Info
-- Current: `1.1.1` — bulk `/api/push-woo` no longer reports false failures: PUT timeout raised 15s→30s, and on timeout/network error it GETs the product back from Woo and counts it as pushed if the stock matches.
+- Current: `1.1.2` — clicking anywhere on a product row opens the AdjustModal ("edit menu") in ProductTable and both dashboard panels (in bulk mode, row click toggles selection instead; inner buttons/inputs keep their own behavior). Panel row-buttons repurposed to "Details" (Eye → drawer) since row click now adjusts.
+- `1.1.1` — bulk `/api/push-woo` no longer reports false failures: PUT timeout raised 15s→30s, and on timeout/network error it GETs the product back from Woo and counts it as pushed if the stock matches.
 - `1.1.0` — bug-fix + scheduled-backup release. Fixes: backup route un-shadowed (was after SPA catch-all), 25 MB JSON body limit (restore was 413-ing), no-reason crash when `require_reason` off, per-file atomic read-modify-write via `mutateData` (lost-update races), SKU-less sync dedup (`NO-SKU-<id>` key match), and secret masking in the `/api/backup` download. New: daily on-disk snapshots to `DATA_DIR/backups/` (keep 14, secrets included since local-only).
 - `package-lock.json` header shows `"version": "1.0.0"` (generated at v1.0.0, not updated since)
 - Notable deps: `electron-updater: ^6.8.3`, `electron-store: ^11.0.2`, `sharp: ^0.34.5` (dev, for icons)

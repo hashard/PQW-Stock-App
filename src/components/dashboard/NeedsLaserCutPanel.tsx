@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Scissors, ChevronDown, ChevronUp, Edit2, Users, X } from 'lucide-react';
+import { Scissors, ChevronDown, ChevronUp, Eye, Users, X } from 'lucide-react';
 import { useStore } from '../../store';
 import { StatusBadge } from '../ui/Badge';
 import { Button } from '../ui/Button';
@@ -129,7 +129,7 @@ export function NeedsLaserCutPanel() {
               {needsCut.map(p => (
                 <tr
                   key={p.id}
-                  onClick={() => openDrawer(p.id)}
+                  onClick={() => openAdjustModal(p.id)}
                   className={[
                     'border-b border-red-100 last:border-0 dark:border-red-800/20 cursor-pointer hover:bg-red-100/50 dark:hover:bg-red-900/20',
                     selectedIds.has(p.id) ? 'bg-red-100 dark:bg-red-900/30' : '',
@@ -151,8 +151,8 @@ export function NeedsLaserCutPanel() {
                   <td className="px-4 py-2 font-mono text-slate-500">{p.cutting_room_minimum}</td>
                   <td className="px-4 py-2 font-mono text-slate-600 dark:text-slate-400">{p.combined_stock}</td>
                   <td className="px-4 py-2">
-                    <Button size="xs" variant="ghost" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAdjustModal(p.id); }}>
-                      <Edit2 className="h-3 w-3" /> Adjust
+                    <Button size="xs" variant="ghost" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openDrawer(p.id); }}>
+                      <Eye className="h-3 w-3" /> Details
                     </Button>
                   </td>
                 </tr>

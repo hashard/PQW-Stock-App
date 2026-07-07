@@ -355,8 +355,14 @@ export function ProductTable() {
                 : paged.map(product => (
                   <tr
                     key={product.id}
+                    onClick={(e) => {
+                      // Let buttons, checkboxes, links etc. inside the row keep their own behavior
+                      if ((e.target as HTMLElement).closest('button, input, a, select')) return;
+                      if (isBulkMode) { toggleSelectedId(product.id); return; }
+                      openAdjustModal(product.id);
+                    }}
                     className={[
-                      'group transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
+                      'group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
                       selectedIds.has(product.id) ? 'bg-brand-50 dark:bg-brand-900/20' : '',
                       product.hidden ? 'opacity-50' : '',
                     ].join(' ')}
